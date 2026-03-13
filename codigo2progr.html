@@ -278,7 +278,7 @@
     <input id="authPassword" type="password" placeholder="Contrasena" autocomplete="current-password" />
     <div class="auth-actions">
       <button class="btn btn-primary" id="btnSignIn">Iniciar sesion</button>
-      <button class="btn btn-ghost" id="btnSignUp">Crear cuenta</button>
+      <button class="btn btn-ghost hidden" id="btnSignUp" disabled>Crear cuenta</button>
     </div>
     <div id="authStatus" class="auth-status warn">Inicia sesion para continuar.</div>
   </div>
@@ -435,6 +435,7 @@ const SUPABASE_URL = "https://jtnlcckphveeqhyrxlku.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_khOBBj9EIe2Ahmkz_KxVUw_R-SDOpk0";
 const SUPER_ADMIN_EMAIL = "administrador@combuses.com.co";
 const BASE_USER_EMAIL_RE = /^base\s*([0-9]+)@combuses\.com\.co$/i;
+const ALLOW_PUBLIC_SIGNUP = false;
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const authPanel = document.getElementById("authPanel");
@@ -736,6 +737,10 @@ btnSignIn.onclick = async () => {
 };
 
 btnSignUp.onclick = async () => {
+  if (!ALLOW_PUBLIC_SIGNUP) {
+    setAuthStatus("Registro deshabilitado. Solicita tu usuario al administrador.", "warn");
+    return;
+  }
   const email = authEmail.value.trim();
   const password = authPassword.value;
   if(!email || !password){
@@ -751,6 +756,11 @@ btnSignUp.onclick = async () => {
   setAuthStatus("Cuenta creada. Revisa tu correo si la confirmacion esta activa.", "ok");
   authPassword.value = "";
 };
+
+if (btnSignUp && !ALLOW_PUBLIC_SIGNUP) {
+  btnSignUp.classList.add("hidden");
+  btnSignUp.disabled = true;
+}
 
 btnLogout.onclick = async () => {
   const { error } = await supabaseClient.auth.signOut();
@@ -2863,6 +2873,8 @@ initAuth();
 </script>
 </body>
 </html>
+
+
 
 
 
