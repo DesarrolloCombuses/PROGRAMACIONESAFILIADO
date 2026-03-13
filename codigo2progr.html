@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="utf-8" />
@@ -309,6 +309,13 @@
         <h3>Subir Programacion</h3>
         <input id="fileProg" type="file" accept=".xlsx,.xls,.csv"/>
         <label for="fileProg" class="file">Cargar Excel Programacion</label>
+        <div class="row" style="margin-top:10px">
+          <input id="adminDayDate" type="date" placeholder="Dia a editar">
+          <button class="btn btn-danger" id="btnDeleteDay">Eliminar dia</button>
+        </div>
+        <div class="muted" style="margin-top:6px">
+          Si seleccionas un dia arriba y cargas un Excel, solo se reemplaza ese dia.
+        </div>
         <div style="margin-top:10px" class="row">
           <button class="btn btn-success" id="btnExport" disabled>Descargar Excel</button>
           <button class="btn btn-success" id="btnExportFormato" disabled>Descargar Formato Operativo</button>
@@ -370,7 +377,7 @@
             <button class="btn btn-ghost" id="clearFilter">Limpiar filtro</button>
             <span class="muted">En BASE 3: arrastra vehiculo sobre otro para intercambiar posicion.</span>
           </div>
-          <div style="overflow:auto;max-height:60vh">
+          <div id="gridViewport" style="overflow:visible;max-height:none">
             <table id="grid"><thead></thead><tbody></tbody></table>
           </div>
         </div>
@@ -381,7 +388,7 @@
             <span>Base seleccionada: <strong id="novedadesBaseDisplay">-</strong></span>
             <span>Conductores con novedad: <strong id="novedadesCount">0</strong></span>
           </div>
-          <div style="overflow:auto;max-height:60vh">
+          <div id="novedadesViewport" style="overflow:auto;max-height:60vh">
             <table class="novedades-table" id="novedadesGrid">
               <thead>
                 <tr>
@@ -519,6 +526,8 @@ function canExportXlsx(){
 function updateExportAccess(){
   const btnExport = document.getElementById("btnExport");
   const btnExportFormato = document.getElementById("btnExportFormato");
+  const btnDeleteDay = document.getElementById("btnDeleteDay");
+  const adminDayDate = document.getElementById("adminDayDate");
   if (!btnExport && !btnExportFormato) return;
   if (canExportXlsx()) {
     if (btnExport) {
@@ -529,6 +538,8 @@ function updateExportAccess(){
       btnExportFormato.classList.remove("hidden");
       btnExportFormato.disabled = rows.length === 0;
     }
+    if (btnDeleteDay) btnDeleteDay.disabled = rows.length === 0;
+    if (adminDayDate) adminDayDate.disabled = false;
     return;
   }
   if (btnExport) {
@@ -539,6 +550,8 @@ function updateExportAccess(){
     btnExportFormato.classList.add("hidden");
     btnExportFormato.disabled = true;
   }
+  if (btnDeleteDay) btnDeleteDay.disabled = true;
+  if (adminDayDate) adminDayDate.disabled = true;
 }
 
 function getRoleFromMetadata(user){
@@ -585,16 +598,75 @@ function validateProgramacionRows(parsedRows){
   const headers = Array.from(headerSet);
   const normHeaders = headers.map(h => norm(h));
   const compactHeaders = headers.map(h => normCompact(h));
-  const hasBase = normHeaders.some(h => ["BASE", "PUESTO", "PATIO", "ESTACION", "ESTACIÓN"].includes(h));
-  const hasVehiculo = normHeaders.some(h => ["VEHICULO", "VEHÍCULO", "MOVIL", "MÓVIL"].includes(h));
+  const hasBase = normHeaders.some(h => BASE_COLUMN_ALIASES.includes(h));
+  const hasVehiculo = normHeaders.some(h => ["VEH", "VEHICULO", "VEHÍCULO", "MOVIL", "MÓVIL"].includes(h));
   if (!hasBase) {
     if (!hasVehiculo) {
       throw new Error("Falta columna de base (BASE/PUESTO) o VEHICULO para inferir base.");
     }
   }
-  if (!compactHeaders.includes("CONDUCTOR1") && !compactHeaders.includes("CONDUCTOR2")) {
-    throw new Error("Falta columna CONDUCTOR 1 o CONDUCTOR 2.");
+  const inferredConductores = inferConductorKeysFromList(headers);
+  if (!inferredConductores.key1 && !inferredConductores.key2) {
+    throw new Error("Falta columna de conductor (ej: CONDUCTOR 1 / CONDUCTOR 2).");
   }
+}
+
+function inferConductorKeysFromList(keys){
+  const list = Array.isArray(keys) ? keys : [];
+  const token = (k) => normCompact(k).replace(/[^A-Z0-9]/g, "");
+  const conductorCandidates = list.filter(k => token(k).includes("CONDUCT"));
+
+  let key1 = null;
+  let key2 = null;
+
+  conductorCandidates.forEach(k => {
+    const t = token(k);
+    if (!key1 && (t.includes("1") || t.endsWith("UNO"))) key1 = k;
+    if (!key2 && t.includes("2")) key2 = k;
+  });
+
+  conductorCandidates.forEach(k => {
+    if (!key1) {
+      key1 = k;
+      return;
+    }
+    if (!key2 && k !== key1) key2 = k;
+  });
+
+  return { key1, key2 };
+}
+
+function inferInicioKeysFromList(keys){
+  const list = Array.isArray(keys) ? keys : [];
+  const token = (k) => normCompact(k).replace(/[^A-Z0-9]/g, "");
+  const inicioCandidates = list.filter(k => {
+    const t = token(k);
+    return t.includes("INICIA") || t.includes("INICIO") || t.includes("HORAINICIO");
+  });
+
+  let key1 = null;
+  let key2 = null;
+
+  inicioCandidates.forEach(k => {
+    const t = token(k);
+    if (!key2 && t.includes("2")) key2 = k;
+    if (!key1 && (t.includes("1") || t === "INICIA" || t === "INICIO" || t === "HORAINICIO")) key1 = k;
+  });
+
+  inicioCandidates.forEach(k => {
+    if (!key1) {
+      key1 = k;
+      return;
+    }
+    if (!key2 && k !== key1) key2 = k;
+  });
+
+  return { key1, key2 };
+}
+
+function isTimeColumnKey(headerKey){
+  const t = normCompact(headerKey).replace(/[^A-Z0-9]/g, "");
+  return t.includes("HORA") || t.startsWith("INICIA") || t.startsWith("INICIO");
 }
 
 function applyAuthState(session){
@@ -802,7 +874,7 @@ async function saveProgramacionToSupabase(file, parsedRows){
 }
 
 async function syncProgramacionRowsToSupabase(reason = "Cambios guardados en Supabase."){
-  if (!currentUserId || !Array.isArray(rows) || rows.length === 0) return;
+  if (!currentUserId || !Array.isArray(rows)) return;
   if (!navigator.onLine) {
     savePendingRowsLocally("Sin internet");
     setSyncStatus("warn", "Sin internet - pendiente");
@@ -944,6 +1016,9 @@ const NOVEDADES = {
   PENDIENTE: { class: 'pendiente', color: '#9ca3af', label: 'Pendiente' }
 };
 
+// Importante: PUESTO (NUTIBARA/SAN DIEGO/EXPOSICIONES) no representa la base operativa.
+const BASE_COLUMN_ALIASES = ["BASE", "PATIO", "ESTACION", "ESTACIÓN"];
+
 /* ===================== UI ===================== */
 const lblGlobal = document.getElementById("lblGlobal");
 const lblCurrentBase = document.getElementById("lblCurrentBase");
@@ -962,6 +1037,8 @@ const novedadesBaseDisplay = document.getElementById("novedadesBaseDisplay");
 const novedadesCount = document.getElementById("novedadesCount");
 const debugOutput = document.getElementById("debugOutput");
 const btnRefreshDebug = document.getElementById("btnRefreshDebug");
+const gridViewport = document.getElementById("gridViewport");
+const novedadesViewport = document.getElementById("novedadesViewport");
 const workflowGuide = document.getElementById("workflowGuide");
 const stepSelectDate = document.getElementById("stepSelectDate");
 const stepAssignDrivers = document.getElementById("stepAssignDrivers");
@@ -1030,6 +1107,20 @@ function updateWorkflowGuide(){
   if (filterInput) filterInput.disabled = false;
 }
 
+function adjustDynamicTableViewport(){
+  const applyTo = (el) => {
+    if (!el || !el.closest(".tab-content.active")) return;
+    const rect = el.getBoundingClientRect();
+    const available = Math.max(260, window.innerHeight - rect.top - 36);
+    el.style.maxHeight = `${available}px`;
+  };
+  if (gridViewport) {
+    gridViewport.style.maxHeight = "none";
+    gridViewport.style.overflow = "visible";
+  }
+  applyTo(novedadesViewport);
+}
+
 function applyRoleRestrictions(){
   const navButtonsRow = document.getElementById("btnGoOperativo")?.parentElement;
   const baseSelectorRow = document.getElementById("btnEnterBase")?.parentElement;
@@ -1093,7 +1184,7 @@ async function renderSupabaseDebug(){
   const headerSet = new Set();
   rawRows.slice(0, 200).forEach(r => Object.keys(r || {}).forEach(k => headerSet.add(k)));
   const allKeys = Array.from(headerSet);
-  const baseCandidates = allKeys.filter(k => ["BASE", "PUESTO", "PATIO", "ESTACION", "ESTACIÓN"].includes(norm(k)));
+  const baseCandidates = allKeys.filter(k => BASE_COLUMN_ALIASES.includes(norm(k)));
   let debugBaseKey = null;
   if (baseCandidates.length > 0) {
     const score = (key) => normalizedRows.slice(0, 500).reduce((acc, r) => acc + (String((r && r[key]) ?? "").trim() ? 1 : 0), 0);
@@ -1145,20 +1236,19 @@ async function renderSupabaseDebug(){
 }
 
 const VEHICLE_TO_BASE_MAP = {
-  "730":"BASE 1","732":"BASE 1","729":"BASE 1",
-  "719":"BASE 2","749":"BASE 2","748":"BASE 2",
-  "738":"BASE 3","740":"BASE 3","750":"BASE 3","752":"BASE 3","741":"BASE 3",
-  "734":"BASE 3","742":"BASE 3","753":"BASE 3","722":"BASE 3","723":"BASE 3",
-  "758":"BASE 3","743":"BASE 3","720":"BASE 3","709":"BASE 3","718":"BASE 3",
-  "737":"BASE 3","726":"BASE 3","754":"BASE 3","724":"BASE 3","751":"BASE 3",
-  "714":"BASE 3","727":"BASE 3","744":"BASE 3","745":"BASE 3","716":"BASE 3",
-  "739":"BASE 3","755":"BASE 3",
-  "717":"BASE 4","725":"BASE 4","705":"BASE 4","735":"BASE 4","731":"BASE 4",
-  "715":"BASE 4","721":"BASE 4","746":"BASE 4","728":"BASE 4","703":"BASE 4",
-  "707":"BASE 4",
-  "733":"BASE 5","747":"BASE 5","757":"BASE 5","708":"BASE 5",
-  "759":"BASE 6",
-  "756":"BASE 8","736":"BASE 8"
+  "703":"BASE 4","705":"BASE 4","707":"BASE 4","708":"BASE 5","709":"BASE 3",
+  "714":"BASE 3","715":"BASE 4","716":"BASE 3","717":"BASE 4","718":"BASE 3",
+  "719":"BASE 2","720":"BASE 3","721":"BASE 4","722":"BASE 3","723":"BASE 3",
+  "724":"BASE 3","725":"BASE 4","726":"BASE 3","727":"BASE 3","728":"BASE 4",
+  "729":"BASE 1","730":"BASE 1","731":"BASE 4","732":"BASE 1","733":"BASE 5",
+  "734":"BASE 3","735":"BASE 4","736":"BASE 8","737":"BASE 3","738":"BASE 3",
+  "739":"BASE 3","740":"BASE 3","741":"BASE 3","742":"BASE 3","743":"BASE 3",
+  "744":"BASE 3","745":"BASE 3","746":"BASE 4","747":"BASE 5","748":"BASE 2",
+  "749":"BASE 2","750":"BASE 3","751":"BASE 3","752":"BASE 3","753":"BASE 3",
+  "754":"BASE 3","755":"BASE 3","756":"BASE 8","757":"BASE 5","758":"BASE 3",
+  "759":"BASE 6","15":"BASE 5","17":"BASE 3","59":"BASE 5","64":"BASE 5",
+  "89":"BASE 5","100":"BASE 5","157":"BASE 5","163":"BASE 5","211":"BASE 5",
+  "232":"BASE 5","507":"BASE 3","510":"BASE 3"
 };
 
 function normalizeVehicleId(value){
@@ -1171,8 +1261,22 @@ function getVehiculoKey(rowObj){
   const keys = Object.keys(rowObj || {});
   return keys.find(k => {
     const n = norm(k);
-    return n === "VEHICULO" || n === "VEHÍCULO" || n === "MOVIL" || n === "MÓVIL";
+    return n === "VEH" || n === "VEHICULO" || n === "VEHÍCULO" || n === "MOVIL" || n === "MÓVIL";
   }) || null;
+}
+
+function getRowCanonicalBase(rowObj, explicitBaseKey = null){
+  const row = rowObj || {};
+  const keys = Object.keys(row);
+  const baseKey = explicitBaseKey || keys.find(k => BASE_COLUMN_ALIASES.includes(norm(k))) || null;
+  const directBase = baseKey ? getBaseCanonical(row[baseKey]) : "";
+  if (directBase) return directBase;
+
+  const vehKey = getVehiculoKey(row);
+  if (!vehKey) return "";
+  const vehicleId = normalizeVehicleId(row[vehKey]);
+  const inferred = VEHICLE_TO_BASE_MAP[vehicleId] || "";
+  return getBaseCanonical(inferred);
 }
 
 function normalizeProgramacionRows(inputRows){
@@ -1185,7 +1289,7 @@ function normalizeProgramacionRows(inputRows){
       r[fechaKey] = normalizeDateToISO(r[fechaKey]);
     }
 
-    const baseKey = Object.keys(r).find(k => ["BASE", "PUESTO", "PATIO", "ESTACION", "ESTACIÓN"].includes(norm(k)));
+    const baseKey = Object.keys(r).find(k => BASE_COLUMN_ALIASES.includes(norm(k)));
     const vehiculoKey = getVehiculoKey(r);
     if (vehiculoKey) {
       const vehicleId = normalizeVehicleId(r[vehiculoKey]);
@@ -1280,7 +1384,7 @@ function getBaseKey(){
     const hasData = rows.slice(0, 500).some(r => String((r && r[baseKeyExact]) ?? "").trim());
     if (hasData) return baseKeyExact;
   }
-  const aliases = new Set(["PUESTO", "PATIO", "ESTACION", "ESTACIÓN"]);
+  const aliases = new Set(BASE_COLUMN_ALIASES.filter(a => a !== "BASE"));
   const candidates = keys.filter(k => aliases.has(norm(k)));
   if (candidates.length === 0) return null;
   const score = (key) => rows.slice(0, 500).reduce((acc, r) => {
@@ -1293,8 +1397,45 @@ function getBaseKey(){
 
 function getFechaKey(){
   if(rows.length===0) return null;
-  const keys = Object.keys(rows[0]);
-  return keys.find(k=>norm(k)==="FECHA") || null;
+  const headerSet = new Set();
+  rows.slice(0, 200).forEach(r => Object.keys(r || {}).forEach(k => headerSet.add(k)));
+  const keys = Array.from(headerSet);
+  return keys.find(k => norm(k) === "FECHA") || null;
+}
+
+function getFechaKeyFromArray(inputRows){
+  if(!Array.isArray(inputRows) || inputRows.length === 0) return null;
+  const keySet = new Set();
+  inputRows.slice(0, 200).forEach(r => Object.keys(r || {}).forEach(k => keySet.add(k)));
+  const keys = Array.from(keySet);
+  return keys.find(k => norm(k) === "FECHA") || null;
+}
+
+function getRowDateISO(rowObj, preferredFechaKey = null){
+  const row = rowObj || {};
+  const keys = Object.keys(row);
+  const fechaKey = (preferredFechaKey && keys.includes(preferredFechaKey))
+    ? preferredFechaKey
+    : (keys.find(k => norm(k) === "FECHA") || null);
+  if (!fechaKey) return "";
+  const iso = normalizeDateToISO(row[fechaKey]);
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(iso || "")) ? iso : "";
+}
+
+function partitionRowsByDate(inputRows, targetIso, preferredFechaKey = null){
+  const target = normalizeDateToISO(targetIso);
+  const selected = [];
+  const rest = [];
+  (Array.isArray(inputRows) ? inputRows : []).forEach(r => {
+    const rowIso = getRowDateISO(r, preferredFechaKey);
+    if (rowIso && rowIso === target) selected.push(r);
+    else rest.push(r);
+  });
+  return { selected, rest };
+}
+
+function getSelectedOperativeDateISO(){
+  return normalizeDateToISO(document.getElementById("filterDate")?.value || "");
 }
 
 function isFichoRowByContent(rowObj){
@@ -1303,7 +1444,7 @@ function isFichoRowByContent(rowObj){
   const findByNorm = (aliases) => keys.find(k => aliases.includes(norm(k))) || null;
   const puestoKey = findByNorm(["PUESTO"]);
   const numeroKey = findByNorm(["#"]);
-  const baseKey = findByNorm(["BASE", "PUESTO", "PATIO", "ESTACION", "ESTACIÓN"]);
+  const baseKey = findByNorm(BASE_COLUMN_ALIASES);
   const rowContext = `${norm(puestoKey ? row[puestoKey] : "")} ${norm(numeroKey ? row[numeroKey] : "")} ${norm(baseKey ? row[baseKey] : "")}`;
   return rowContext.includes("FICHO");
 }
@@ -1321,7 +1462,8 @@ function getDateAssignmentStatsForBase(dateIso, baseValue = currentBase){
   }
 
   rows.forEach(r => {
-    if (baseKey && !sameBase(r[baseKey], canonicalBase)) return;
+    const rowBase = getRowCanonicalBase(r, baseKey);
+    if (canonicalBase && rowBase !== canonicalBase) return;
     const rowDate = normalizeDateToISO(r[fechaKey]);
     if (rowDate !== dateIso) return;
     if (isFichoRowByContent(r)) return;
@@ -1355,7 +1497,8 @@ function getRemainingDriversCountForDate(dateIso, baseValue = currentBase){
 
   if (fechaKey && (key1 || key2)) {
     rows.forEach(r => {
-      if (baseKey && !sameBase(r[baseKey], canonicalBase)) return;
+      const rowBase = getRowCanonicalBase(r, baseKey);
+      if (canonicalBase && rowBase !== canonicalBase) return;
       const rowDate = normalizeDateToISO(r[fechaKey]);
       if (rowDate !== dateIso) return;
       if (isFichoRowByContent(r)) return;
@@ -1368,7 +1511,7 @@ function getRemainingDriversCountForDate(dateIso, baseValue = currentBase){
 
   const inNovedades = new Set(
     novedades
-      .filter(n => sameBase(n.base, canonicalBase))
+      .filter(n => sameBase(n.base, canonicalBase) && normalizeDateToISO(n.fecha) === dateIso)
       .map(n => norm(n.nombre))
   );
 
@@ -1438,9 +1581,11 @@ function getAvailableDatesForCurrentBase(){
   if (!fechaKey || rows.length === 0) return [];
   const baseKey = getBaseKey();
   const dates = new Set();
+  const canonicalCurrentBase = getBaseCanonical(currentBase);
 
   rows.forEach(r => {
-    if (currentBase && baseKey && !sameBase(r[baseKey], currentBase)) return;
+    const rowBase = getRowCanonicalBase(r, baseKey);
+    if (canonicalCurrentBase && rowBase !== canonicalCurrentBase) return;
     const iso = normalizeDateToISO(r[fechaKey]);
     if (/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ""))) {
       dates.add(iso);
@@ -1511,30 +1656,16 @@ function canMoveOnFromSelectedDate(actionLabel = "continuar", dateOverride = nul
 
 function getConductorKeysFromRows(){
   if(rows.length===0) return { key1: null, key2: null };
-  const keys = Object.keys(rows[0]);
-  let key1 = null;
-  let key2 = null;
-  keys.forEach(k => {
-    const ck = normCompact(k);
-    if (ck === "CONDUCTOR1") key1 = k;
-    if (ck === "CONDUCTOR2") key2 = k;
-  });
-  return { key1, key2 };
+  const headerSet = new Set();
+  rows.slice(0, 50).forEach(r => Object.keys(r || {}).forEach(k => headerSet.add(k)));
+  return inferConductorKeysFromList(Array.from(headerSet));
 }
 
 function getConductorKeysFromArray(inputRows){
   if(!Array.isArray(inputRows) || inputRows.length === 0) return { key1: null, key2: null };
   const keySet = new Set();
   inputRows.slice(0, 50).forEach(r => Object.keys(r || {}).forEach(k => keySet.add(k)));
-  const keys = Array.from(keySet);
-  let key1 = null;
-  let key2 = null;
-  keys.forEach(k => {
-    const ck = normCompact(k);
-    if (ck === "CONDUCTOR1") key1 = k;
-    if (ck === "CONDUCTOR2") key2 = k;
-  });
-  return { key1, key2 };
+  return inferConductorKeysFromList(Array.from(keySet));
 }
 
 function buildProgramacionRowKey(rowObj){
@@ -1543,7 +1674,7 @@ function buildProgramacionRowKey(rowObj){
   const findByNorm = (aliases) => keys.find(k => aliases.includes(norm(k))) || null;
   const findByCompact = (aliases) => keys.find(k => aliases.includes(normCompact(k))) || null;
   const fechaKey = findByNorm(["FECHA"]);
-  const baseKey = findByNorm(["BASE", "PUESTO", "PATIO", "ESTACION", "ESTACIÓN"]);
+  const baseKey = findByNorm(BASE_COLUMN_ALIASES);
   const vehiculoKey = getVehiculoKey(row);
   const numeroKey = findByNorm(["#"]);
   const puestoKey = findByNorm(["PUESTO"]);
@@ -1718,7 +1849,7 @@ function fillStartBases(){
   const baseKey = getBaseKey();
   if (baseKey && rows.length > 0) {
     rows.forEach(r => {
-      const b = String(r[baseKey] || "").trim();
+      const b = getRowCanonicalBase(r, baseKey);
       addBase(b);
     });
   }
@@ -1741,10 +1872,10 @@ function rebuildAssigned(){
   const selectedDate = document.getElementById("filterDate").value;
 
   rows.forEach(r => {
-    const b = baseKey ? String(r[baseKey] || "").trim() : "";
+    const b = getRowCanonicalBase(r, baseKey);
     if(!b) return;
     if(currentBase && !sameBase(b, currentBase)) return;
-    if(selectedDate && fechaKey && r[fechaKey] !== selectedDate) return;
+    if(selectedDate && fechaKey && normalizeDateToISO(r[fechaKey]) !== selectedDate) return;
 
     if(!assignedByBase[b]) assignedByBase[b] = new Set();
     
@@ -1761,9 +1892,14 @@ function getAvailableDriversForBase(base){
   if(!base) return [];
   const pool = driversByBase[base] || driversByBase[formatBaseLabel(base)] || [];
   const used = assignedByBase[base] || assignedByBase[formatBaseLabel(base)] || new Set();
+  const selectedDate = getSelectedOperativeDateISO();
   
-  // Tambien excluir conductores que ya estan en novedades
-  const enNovedades = new Set(novedades.map(n => norm(n.nombre)));
+  // Excluir conductores en novedades de la misma base y misma fecha operativa.
+  const enNovedades = new Set(
+    novedades
+      .filter(n => sameBase(n.base, base) && (!selectedDate || normalizeDateToISO(n.fecha) === selectedDate))
+      .map(n => norm(n.nombre))
+  );
   
   return pool.filter(d => !used.has(norm(d)) && !enNovedades.has(norm(d)));
 }
@@ -1842,17 +1978,29 @@ function renderDrivers(){
 /* ===================== NOVEDADES ===================== */
 function renderNovedades(){
   if (!novedadesBody) return;
+  adjustDynamicTableViewport();
+  const selectedDate = getSelectedOperativeDateISO();
   
-  // Filtrar novedades por base actual
-  const novedadesBase = novedades.filter(n => sameBase(n.base, currentBase));
+  // Filtrar novedades por base actual y fecha seleccionada.
+  const novedadesBase = novedades.filter(n =>
+    sameBase(n.base, currentBase) &&
+    (!!selectedDate && normalizeDateToISO(n.fecha) === selectedDate)
+  );
   novedadesCount.textContent = novedadesBase.length;
   novedadesBaseDisplay.textContent = currentBase ? formatBaseLabel(currentBase) : '-';
   
   novedadesBody.innerHTML = '';
+
+  if (!selectedDate) {
+    novedadesBody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:20px" class="muted">
+      Selecciona una fecha para ver y registrar novedades
+    </td></tr>`;
+    return;
+  }
   
   if (novedadesBase.length === 0) {
     novedadesBody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:20px" class="muted">
-      No hay conductores con novedades en esta base
+      No hay conductores con novedades en esta base para ${excelDateToReadable(selectedDate)}
     </td></tr>`;
     return;
   }
@@ -1929,6 +2077,7 @@ function renderNovedades(){
 function renderTable(){
   gridHead.innerHTML = '';
   gridBody.innerHTML = '';
+  adjustDynamicTableViewport();
   refreshFilterDateOptions();
   autoSelectDateForBaseOperator();
   updateWorkflowGuide();
@@ -1943,7 +2092,45 @@ function renderTable(){
     return;
   }
 
-  const headers = Object.keys(rows[0]).filter(h => h.toUpperCase() !== "HOJA");
+  const rawHeaders = Object.keys(rows[0]).filter(h => h.toUpperCase() !== "HOJA");
+  const preferredHeaderOrder = [
+    "#",
+    "INICIA",
+    "VEH",
+    "CONDUCTOR 1",
+    "INICIA 2",
+    "CONDUCTOR 2",
+    "HORA FIN"
+  ];
+  const normalizeHeaderToken = (h) => normCompact(h).replace(/[^A-Z0-9]/g, "");
+  const headerTokens = new Map(rawHeaders.map(h => [h, normalizeHeaderToken(h)]));
+  const aliases = {
+    "#": ["#"],
+    "INICIA": ["INICIA", "INICIO", "HORAINICIO1", "HORAINICIO"],
+    "VEH": ["VEH", "VEHICULO", "VEHÍCULO", "MOVIL", "MÓVIL"],
+    "CONDUCTOR 1": ["CONDUCTOR1", "CONDUCTOI1", "CONDUCTOR", "CONDUCTOI"],
+    "INICIA 2": ["INICIA2", "INICIO2", "HORAINICIO2"],
+    "CONDUCTOR 2": ["CONDUCTOR2", "CONDUCTOI2"],
+    "HORA FIN": ["HORAFIN", "HORAFINAL", "FIN"]
+  };
+  const used = new Set();
+  const orderedHeaders = [];
+  preferredHeaderOrder.forEach(label => {
+    const bucket = aliases[label] || [];
+    const found = rawHeaders.find(h => {
+      if (used.has(h)) return false;
+      const t = headerTokens.get(h);
+      return bucket.some(a => t === normalizeHeaderToken(a));
+    });
+    if (found) {
+      used.add(found);
+      orderedHeaders.push(found);
+    }
+  });
+  rawHeaders.forEach(h => {
+    if (!used.has(h)) orderedHeaders.push(h);
+  });
+  const headers = orderedHeaders;
   const headRow = document.createElement('tr');
   headers.forEach(h => {
     const th = document.createElement('th');
@@ -1956,7 +2143,7 @@ function renderTable(){
   const fechaKey = getFechaKey();
   const vehiculoKey = headers.find(h => {
     const n = norm(h);
-    return n === "VEHICULO" || n === "VEHÍCULO" || n === "MOVIL" || n === "MÓVIL";
+    return n === "VEH" || n === "VEHICULO" || n === "VEHÍCULO" || n === "MOVIL" || n === "MÓVIL";
   }) || null;
   const base3VehiculoSwapEnabled = getBaseCanonical(currentBase) === "3";
   const puestoKey = headers.find(h => norm(h) === "PUESTO") || null;
@@ -1973,11 +2160,15 @@ function renderTable(){
   }
 
   let filteredRows = rows.slice();
-  if(currentBase && baseKey){
-    filteredRows = filteredRows.filter(r => sameBase(r[baseKey], currentBase));
+  if(currentBase){
+    const currentCanonicalBase = getBaseCanonical(currentBase);
+    filteredRows = filteredRows.filter(r => {
+      const rowBase = getRowCanonicalBase(r, baseKey);
+      return rowBase === currentCanonicalBase;
+    });
   }
   if(selectedDate && fechaKey){
-    filteredRows = filteredRows.filter(r => r[fechaKey] === selectedDate);
+    filteredRows = filteredRows.filter(r => normalizeDateToISO(r[fechaKey]) === selectedDate);
   }
 
   if (filteredRows.length === 0) {
@@ -1993,9 +2184,10 @@ function renderTable(){
 
   filteredRows.forEach((r) => {
     const tr = document.createElement('tr');
+    const rowCanonicalBase = getRowCanonicalBase(r, baseKey);
     const puestoRowVal = puestoKey ? norm(r[puestoKey]) : "";
     const numeroRowVal = numeroKey ? norm(r[numeroKey]) : "";
-    const baseRowVal = baseKey ? norm(r[baseKey]) : "";
+    const baseRowVal = norm(rowCanonicalBase || "");
     const rowContextGlobal = `${puestoRowVal} ${numeroRowVal} ${baseRowVal}`;
     const isFichoRowGlobal = rowContextGlobal.includes("FICHO");
     const isExposRow = rowContextGlobal.includes("EXPOSICIONES");
@@ -2008,12 +2200,12 @@ function renderTable(){
       let v = r[k];
       const puestoVal = puestoKey ? norm(r[puestoKey]) : "";
       const numeroVal = numeroKey ? norm(r[numeroKey]) : "";
-      const baseVal = baseKey ? norm(r[baseKey]) : "";
+      const baseVal = norm(rowCanonicalBase || "");
       const rowContext = `${puestoVal} ${numeroVal} ${baseVal}`;
       const isFichoRow = rowContext.includes("FICHO");
 
       if(norm(k) === "FECHA") v = excelDateToReadable(v);
-      if(k.toUpperCase().includes("HORA")) v = excelTimeToHHMM(v);
+      if(isTimeColumnKey(k)) v = excelTimeToHHMM(v);
 
       if ((conductor1Key && k === conductor1Key) || (conductor2Key && k === conductor2Key)){
         td.classList.add('drop');
@@ -2033,13 +2225,13 @@ function renderTable(){
             const novedad = match[2];
             td.innerHTML = `
               ${nombre}
-              <span class="base-badge">${formatBaseLabel(r[baseKey] || '')}</span>
+              <span class="base-badge">${formatBaseLabel(rowCanonicalBase || '')}</span>
               <span class="estado-tag tag-${novedad.toLowerCase()}">${novedad}</span>
             `;
           } else {
             td.innerHTML = `
               ${v}
-              <span class="base-badge">${formatBaseLabel(r[baseKey] || '')}</span>
+              <span class="base-badge">${formatBaseLabel(rowCanonicalBase || '')}</span>
             `;
           }
         }
@@ -2194,6 +2386,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     if (tabId === 'debugsupabase') {
       renderSupabaseDebug();
     }
+    adjustDynamicTableViewport();
   });
 });
 
@@ -2208,14 +2401,21 @@ if (novedadesGrid) {
       const data = JSON.parse(ev.dataTransfer.getData('text/plain'));
       
       if (data.tipo === 'conductor') {
+        const selectedDate = getSelectedOperativeDateISO();
+        if (!selectedDate) {
+          showToast("Selecciona una fecha antes de registrar novedades.", "warn");
+          return;
+        }
         // Verificar que el conductor no este ya en novedades
         const existe = novedades.some(n => 
-          n.nombre === data.nombre && sameBase(n.base, data.base)
+          n.nombre === data.nombre &&
+          sameBase(n.base, data.base) &&
+          normalizeDateToISO(n.fecha) === selectedDate
         );
         
         if (existe) {
-          alert('Este conductor ya esta en la tabla de novedades');
-          showToast("Ese conductor ya tiene novedad en esta base.", "warn");
+          alert('Este conductor ya esta en la tabla de novedades para la fecha seleccionada');
+          showToast("Ese conductor ya tiene novedad en esta base y fecha.", "warn");
           return;
         }
         
@@ -2223,7 +2423,7 @@ if (novedadesGrid) {
           nombre: data.nombre,
           base: formatBaseLabel(data.base),
           estado: 'PENDIENTE',
-          fecha: new Date().toISOString().split('T')[0]
+          fecha: selectedDate
         });
         novedades.unshift(nueva);
         
@@ -2264,19 +2464,40 @@ async function readFile(file){
     reader.readAsArrayBuffer(file);
   });
 
+  const adminDayDate = normalizeDateToISO(document.getElementById("adminDayDate")?.value || "");
+  const scopedDayImport = isSuperAdmin() && /^\d{4}-\d{2}-\d{2}$/.test(adminDayDate);
   let nextRows = parsedRows;
-  const mergeResult = mergeImportedRowsPreservingAssignments(parsedRows, rows);
-  if (mergeResult.matchedRows > 0) {
-    nextRows = mergeResult.mergedRows;
+
+  if (scopedDayImport) {
+    const incomingFechaKey = getFechaKeyFromArray(parsedRows);
+    const existingFechaKey = getFechaKeyFromArray(rows);
+    const incomingParts = partitionRowsByDate(parsedRows, adminDayDate, incomingFechaKey);
+    if (incomingParts.selected.length === 0) {
+      throw new Error(`El archivo no contiene filas para ${excelDateToReadable(adminDayDate)}.`);
+    }
+
+    const existingParts = partitionRowsByDate(rows, adminDayDate, existingFechaKey);
+    const mergeResult = mergeImportedRowsPreservingAssignments(incomingParts.selected, existingParts.selected);
+    nextRows = existingParts.rest.concat(mergeResult.mergedRows);
     showToast(
-      `Importacion combinada: ${mergeResult.preservedAssignments} asignaciones conservadas (${mergeResult.matchedRows} filas coinciden).`,
+      `Dia ${excelDateToReadable(adminDayDate)} reemplazado (${incomingParts.selected.length} filas, ${mergeResult.preservedAssignments} asignaciones conservadas).`,
       "ok"
     );
+  } else {
+    const mergeResult = mergeImportedRowsPreservingAssignments(parsedRows, rows);
+    if (mergeResult.matchedRows > 0) {
+      nextRows = mergeResult.mergedRows;
+      showToast(
+        `Importacion combinada: ${mergeResult.preservedAssignments} asignaciones conservadas (${mergeResult.matchedRows} filas coinciden).`,
+        "ok"
+      );
+    }
   }
 
   rows = nextRows;
   updateExportAccess();
   fillStartBases();
+  if (currentBase) refreshFilterDateOptions();
   try {
     await saveProgramacionToSupabase(file, nextRows);
     lblGlobal.textContent = `Programacion en linea: ${file.name} | Filas: ${rows.length}`;
@@ -2367,7 +2588,7 @@ document.getElementById('btnExport').onclick = () => {
   const exportRows = rows.map(({Hoja,...r}) => {
     const out = { ...r };
     Object.keys(out).forEach(k => {
-      if (norm(k).includes("HORA")) {
+      if (isTimeColumnKey(k)) {
         out[k] = excelTimeToHHMM(out[k]);
       }
     });
@@ -2393,10 +2614,11 @@ document.getElementById('btnExportFormato').onclick = () => {
   const fechaKey = getFechaKey();
   const puestoKey = getHeaderKeyByNorm(["PUESTO"]);
   const numeroKey = getHeaderKeyByNorm(["#"]);
-  const vehiculoKey = getHeaderKeyByNorm(["VEHICULO", "VEHÍCULO", "MOVIL", "MÓVIL"]);
+  const vehiculoKey = getHeaderKeyByNorm(["VEH", "VEHICULO", "VEHÍCULO", "MOVIL", "MÓVIL"]);
   const horaFinKey = getHeaderKeyByNorm(["HORA FIN", "HORA FINAL"]);
-  const horaInicio1Key = getHeaderKeyByNorm(["HORA INICIO 1", "HORAINICIO1"]);
-  const horaInicio2Key = getHeaderKeyByNorm(["HORA INICIO 2", "HORAINICIO2"]);
+  const headerSet = new Set();
+  rows.slice(0, 200).forEach(r => Object.keys(r || {}).forEach(k => headerSet.add(k)));
+  const { key1: horaInicio1Key, key2: horaInicio2Key } = inferInicioKeysFromList(Array.from(headerSet));
   const { key1: conductor1Key, key2: conductor2Key } = getConductorKeysFromRows();
 
   const selectedDate = document.getElementById("filterDate")?.value || "";
@@ -2412,41 +2634,63 @@ document.getElementById('btnExportFormato').onclick = () => {
     return;
   }
 
-  // Mantener el orden original del archivo: asi queda igual al formato operativo de origen.
+  // Mantener el orden de secuencia del dia y construir bloques por cambio de puesto.
   const ordered = exportData.slice();
-  const groups = new Map();
-  ordered.forEach(r => {
-    const g = String(puestoKey ? r[puestoKey] : "SIN PUESTO").trim() || "SIN PUESTO";
-    if (!groups.has(g)) groups.set(g, []);
-    groups.get(g).push(r);
-  });
-
   const aoa = [];
   const merges = [];
   const dateForTitle = selectedDate || (fechaKey ? normalizeDateToISO(ordered[0][fechaKey]) : "");
   const titleDate = formatDateLongEs(dateForTitle || "");
-
-  Array.from(groups.keys()).forEach((groupName, gi) => {
-    if (gi > 0) aoa.push([]);
+  let activePuesto = "";
+  const openSection = (puestoLabel) => {
+    if (aoa.length > 0) aoa.push([]);
     const titleRow = aoa.length;
-    aoa.push([`${groupName.toUpperCase()} ${titleDate}`]);
+    aoa.push([`${String(puestoLabel || "SIN PUESTO").toUpperCase()} ${titleDate}`]);
     merges.push({ s: { r: titleRow, c: 0 }, e: { r: titleRow, c: 6 } });
     aoa.push(["#", "INICIA", "VEH", "CONDUCTOR 1", "INICIA", "CONDUCTOR 2", "HORA FIN"]);
+  };
 
-    groups.get(groupName).forEach(r => {
-      aoa.push([
-        numeroKey ? r[numeroKey] : "",
-        horaInicio1Key ? excelTimeToHHMM(r[horaInicio1Key]) : "",
-        vehiculoKey ? r[vehiculoKey] : "",
-        conductor1Key ? (r[conductor1Key] || "") : "",
-        horaInicio2Key ? excelTimeToHHMM(r[horaInicio2Key]) : "",
-        conductor2Key ? (r[conductor2Key] || "") : "",
-        horaFinKey ? excelTimeToHHMM(r[horaFinKey]) : ""
-      ]);
-    });
+  ordered.forEach((r, idx) => {
+    const puestoRaw = String(puestoKey ? (r[puestoKey] || "") : "").trim();
+    const numeroRaw = String(numeroKey ? (r[numeroKey] || "") : "").trim();
+    const isFichoMarker = norm(numeroRaw).includes("FICHO");
+
+    // Regla: los FICHO se quedan en su posicion y no abren/cambian titulo de bloque.
+    if (!activePuesto) {
+      activePuesto = puestoRaw || "SIN PUESTO";
+      openSection(activePuesto);
+    } else if (!isFichoMarker && puestoRaw && puestoRaw !== activePuesto) {
+      activePuesto = puestoRaw;
+      openSection(activePuesto);
+    }
+
+    aoa.push([
+      numeroKey ? r[numeroKey] : (idx + 1),
+      horaInicio1Key ? excelTimeToHHMM(r[horaInicio1Key]) : "",
+      vehiculoKey ? (r[vehiculoKey] || "") : "",
+      conductor1Key ? (r[conductor1Key] || "") : "",
+      horaInicio2Key ? excelTimeToHHMM(r[horaInicio2Key]) : "",
+      conductor2Key ? (r[conductor2Key] || "") : "",
+      horaFinKey ? excelTimeToHHMM(r[horaFinKey]) : ""
+    ]);
   });
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
+  let novedadesDelDia = (novedades || []).filter(n => normalizeDateToISO(n.fecha) === selectedDate);
+  if (novedadesDelDia.length === 0 && currentBase) {
+    // Fallback para registros antiguos sin fecha alineada al dia operativo.
+    novedadesDelDia = (novedades || []).filter(n => sameBase(n.base, currentBase));
+  }
+  const novedadesTable = [["NOVEDADES DEL DIA"], ["BASE", "CONDUCTOR", "ESTADO"]];
+  if (novedadesDelDia.length === 0) {
+    novedadesTable.push(["-", "Sin novedades", "-"]);
+  } else {
+    novedadesDelDia.forEach(n => {
+      novedadesTable.push([n.base || "-", n.nombre || "-", n.estado || "-"]);
+    });
+  }
+  XLSX.utils.sheet_add_aoa(ws, novedadesTable, { origin: { r: 0, c: 8 } });
+
+  merges.push({ s: { r: 0, c: 8 }, e: { r: 0, c: 10 } });
   ws["!merges"] = merges;
   ws["!cols"] = [
     { wch: 8 },  // #
@@ -2455,7 +2699,11 @@ document.getElementById('btnExportFormato').onclick = () => {
     { wch: 36 }, // CONDUCTOR 1
     { wch: 10 }, // INICIA
     { wch: 36 }, // CONDUCTOR 2
-    { wch: 10 }  // HORA FIN
+    { wch: 10 }, // HORA FIN
+    { wch: 3 },  // separador
+    { wch: 18 }, // BASE NOVEDAD
+    { wch: 34 }, // CONDUCTOR NOVEDAD
+    { wch: 16 }  // ESTADO NOVEDAD
   ];
 
   const wb = XLSX.utils.book_new();
@@ -2468,6 +2716,53 @@ document.getElementById('clearProg').onclick = () => {
   lblGlobal.textContent = "Sin archivo cargado";
   updateExportAccess();
   exitBase();
+};
+
+document.getElementById("btnDeleteDay").onclick = async () => {
+  if (!isSuperAdmin()) {
+    showToast("Solo el super administrador puede eliminar un dia.", "warn");
+    return;
+  }
+  const dayIso = normalizeDateToISO(document.getElementById("adminDayDate")?.value || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dayIso)) {
+    showToast("Selecciona un dia valido para eliminar.", "warn");
+    return;
+  }
+  if (!Array.isArray(rows) || rows.length === 0) {
+    showToast("No hay programacion cargada.", "warn");
+    return;
+  }
+
+  const fechaKey = getFechaKeyFromArray(rows);
+  const { selected, rest } = partitionRowsByDate(rows, dayIso, fechaKey);
+  if (selected.length === 0) {
+    showToast(`No hay filas para ${excelDateToReadable(dayIso)}.`, "warn");
+    return;
+  }
+
+  rows = rest;
+  assignedByBase = {};
+  updateExportAccess();
+  fillStartBases();
+  if (currentBase) refreshFilterDateOptions();
+
+  const filterDate = document.getElementById("filterDate");
+  if (filterDate && filterDate.value === dayIso) {
+    filterDate.value = "";
+    filterDate.dataset.prevValue = "";
+    const clearBtn = document.getElementById("clearFilter");
+    if (clearBtn) clearBtn.disabled = true;
+  }
+
+  updateWorkflowGuide();
+  renderTable();
+  renderDrivers();
+  renderNovedades();
+  lblGlobal.textContent = currentProgramacionFileName
+    ? `Programacion en linea: ${currentProgramacionFileName} | Filas: ${rows.length}`
+    : `Programacion en linea | Filas: ${rows.length}`;
+
+  await syncProgramacionRowsToSupabase(`Dia ${excelDateToReadable(dayIso)} eliminado (${selected.length} filas).`);
 };
 
 document.getElementById("btnAddBase").onclick = () => {
@@ -2509,6 +2804,7 @@ document.getElementById('filterDate').onchange = () => {
   document.getElementById('clearFilter').disabled = !newValue;
   updateWorkflowGuide();
   renderTable();
+  renderNovedades();
 };
 document.getElementById('clearFilter').onclick = () => {
   if (!canMoveOnFromSelectedDate("limpiar la fecha")) return;
@@ -2517,6 +2813,7 @@ document.getElementById('clearFilter').onclick = () => {
   document.getElementById('clearFilter').disabled = true;
   updateWorkflowGuide();
   renderTable();
+  renderNovedades();
 };
 
 // ==================== INIT ====================
@@ -2560,8 +2857,12 @@ window.addEventListener("offline", () => {
   showToast("Sin internet. Se guardara localmente.", "warn");
 });
 
+window.addEventListener("resize", adjustDynamicTableViewport);
+
 initAuth();
 </script>
 </body>
 </html>
+
+
 
