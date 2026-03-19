@@ -5,8 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" href="data:,">
 <title>Asignacion de Conductores con Pestanas</title>
-<script src="assets/vendor/xlsx.full.min.js"></script>
-<script src="assets/vendor/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
   body{font-family:'Segoe UI',Roboto,sans-serif;background:#f7f8fa;color:#222;margin:0;padding:0}
@@ -72,6 +73,11 @@
   td.veh-drop.highlight{border-color:#16a34a;background:#ecfdf3}
   
   /* Tabla de novedades */
+  /* HORARIO DE HABILITACION 
+  
+  CombuAsigna identidad de app
+  
+  */
   .novedades-table {
     width:100%;border-collapse:collapse;margin-top:10px;
   }
@@ -101,6 +107,8 @@
   .tag-incapacitado{background:#ef4444}
   .tag-permiso{background:#f59e0b}
   .tag-descanso{background:#6b7280}
+  .tag-vacaciones{background:#0ea5e9}
+  .tag-reconocimiento_ruta{background:#7c3aed}
   .tag-pendiente{background:#9ca3af}
   tr.ficho-sandiego td{background:#16a34a !important;color:#fff !important;font-weight:700}
   tr.ficho-expos td{background:#2563eb !important;color:#fff !important;font-weight:700}
@@ -139,14 +147,51 @@
     background:#f9fafb;border-radius:8px;font-size:12px;
   }
 
-  .auth-wrap{max-width:480px;margin:24px auto;padding:0 16px}
-  .auth-card{display:flex;flex-direction:column;gap:10px}
-  .auth-card input{padding:10px;border:1px solid #d1d5db;border-radius:8px}
-  .auth-actions{display:flex;gap:8px;flex-wrap:wrap}
-  .auth-status{font-size:12px}
+  .auth-wrap{
+    max-width:520px;margin:38px auto;padding:0 16px;position:relative;
+    animation:authFadeIn .5s ease both;
+  }
+  .auth-wrap::before{
+    content:"";position:absolute;inset:-18px -8px auto auto;width:180px;height:180px;border-radius:999px;
+    background:radial-gradient(circle at 30% 30%, #bfdbfe 0%, rgba(191,219,254,0) 70%);
+    z-index:0;pointer-events:none;
+  }
+  .auth-card{
+    position:relative;z-index:1;display:flex;flex-direction:column;gap:12px;
+    border:1px solid #dbe3f0;border-radius:18px;padding:20px;
+    background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(248,251,255,.96));
+    box-shadow:0 22px 40px rgba(15,23,42,.14);
+  }
+  .auth-brand{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:6px 12px;border:1px solid #cfe3ff;border-radius:999px;
+    background:#eef6ff;color:#0b4aa2;font-size:12px;font-weight:800;width:max-content;
+  }
+  .auth-title{
+    margin:2px 0 0;font-size:34px;line-height:1;font-weight:900;letter-spacing:.02em;
+    color:#0f172a;text-transform:uppercase;
+  }
+  .auth-sub{
+    margin:0;color:#475569;font-size:14px;
+  }
+  .auth-field{display:flex;flex-direction:column;gap:6px}
+  .auth-label{font-size:12px;color:#334155;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+  .auth-card input{padding:11px 12px;border:1px solid #cbd5e1;border-radius:10px}
+  .auth-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+  .auth-help{
+    display:grid;grid-template-columns:1fr 1fr;gap:8px;
+  }
+  .auth-help-item{
+    font-size:12px;color:#475569;background:#f8fbff;border:1px solid #dbeafe;border-radius:10px;padding:8px;
+  }
+  .auth-status{font-size:12px;font-weight:700}
   .auth-status.ok{color:#166534}
   .auth-status.warn{color:#92400e}
   .auth-status.err{color:#b91c1c}
+  @keyframes authFadeIn{
+    from{opacity:0;transform:translateY(8px)}
+    to{opacity:1;transform:translateY(0)}
+  }
 
   .pill-ok{background:#ecfdf3;border-color:#86efac;color:#166534}
   .pill-warn{background:#fffbeb;border-color:#fcd34d;color:#92400e}
@@ -169,6 +214,77 @@
   .toast.warn{background:#92400e}
   .toast.err{background:#991b1b}
 
+  .modal-backdrop{
+    position:fixed;inset:0;background:rgba(15,23,42,.45);
+    display:flex;align-items:center;justify-content:center;
+    z-index:10020;padding:16px;
+  }
+  .modal-card{
+    width:min(680px, 96vw);background:#fff;border:1px solid #dbe3f0;border-radius:14px;
+    box-shadow:0 20px 45px rgba(15,23,42,.25);padding:16px;
+  }
+  .modal-title{font-size:20px;font-weight:800;margin:0 0 8px}
+  .modal-sub{font-size:13px;color:#64748b;margin-bottom:12px}
+  .swap-grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0 14px;
+  }
+  .swap-box{
+    border:1px solid #dbe3f0;border-radius:10px;padding:10px;background:#f8fbff;
+  }
+  .swap-box h4{margin:0 0 6px;font-size:13px;color:#334155}
+  .swap-line{font-size:14px;margin:4px 0}
+  .swap-veh{font-size:20px;font-weight:800;color:#0f62fe}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px}
+  .note-input{
+    width:100%;min-height:130px;max-height:42vh;resize:vertical;
+    border:1px solid #cfd8e6;border-radius:10px;padding:10px;font-family:inherit;font-size:14px;
+    color:#0f172a;line-height:1.35;
+  }
+  .cell-note{
+    margin-top:6px;padding:6px 8px;border-radius:8px;
+    background:#fff8db;border:1px solid #facc15;color:#713f12;
+    font-size:12px;line-height:1.3;white-space:pre-wrap;word-break:break-word;
+  }
+  .btn-note{
+    margin-top:6px;border:none;border-radius:8px;padding:4px 8px;
+    font-size:11px;font-weight:700;cursor:pointer;
+    background:#dbeafe;color:#1d4ed8;
+  }
+  .btn-note:hover{filter:brightness(1.03)}
+  .slot-unresolved{
+    border:2px solid #ef4444 !important;
+    background:#fff1f2 !important;
+    box-shadow:inset 0 0 0 1px rgba(239,68,68,.15);
+  }
+  .slot-hint{
+    display:inline-block;margin-top:6px;padding:2px 8px;border-radius:999px;
+    background:#fee2e2;color:#991b1b;font-size:11px;font-weight:700;
+  }
+  .slot-note-ok{
+    display:inline-block;margin-top:6px;padding:2px 8px;border-radius:999px;
+    background:#dbeafe;color:#1e3a8a;font-size:11px;font-weight:700;
+  }
+  .admin-progress-head{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+    margin-bottom:10px;
+  }
+  .admin-progress-badge{
+    display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;
+    font-size:12px;font-weight:800;border:1px solid #cbd5e1;background:#f8fafc;color:#334155;
+  }
+  .status-chip{
+    display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;
+    border:1px solid transparent;
+  }
+  .status-complete{background:#ecfdf3;color:#166534;border-color:#86efac}
+  .status-needs_states{background:#fffbeb;color:#92400e;border-color:#fcd34d}
+  .status-in_progress{background:#eef6ff;color:#1d4ed8;border-color:#93c5fd}
+  .status-not_started{background:#fef2f2;color:#991b1b;border-color:#fca5a5}
+  .status-no_turns{background:#f1f5f9;color:#475569;border-color:#cbd5e1}
+  .converter-frame{
+    width:100%;height:72vh;border:1px solid #d1d5db;border-radius:12px;background:#fff;
+  }
+
   .workflow{
     display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px;
   }
@@ -183,7 +299,7 @@
     margin-left:auto;font-size:12px;color:#64748b;align-self:center;
   }
 
-  /* ===== Visual refresh ===== */
+  /* ===== Visual refresh ===== reconocimiento de ruta y vacaciones */
   :root{
     --ui-bg:#f3f7fc;
     --ui-line:#d8e1ef;
@@ -261,6 +377,8 @@
   @media (max-width: 760px){
     .wrap{padding:10px}
     .grid2{grid-template-columns:1fr}
+    .auth-help{grid-template-columns:1fr}
+    .auth-title{font-size:30px}
     .tabs{overflow:auto;white-space:nowrap}
     .tab{padding:9px 14px}
     .topbar{align-items:flex-start}
@@ -273,12 +391,24 @@
 
 <div id="authPanel" class="auth-wrap">
   <div class="card auth-card">
-    <h2>Ingreso</h2>
-    <input id="authEmail" type="email" placeholder="Correo" autocomplete="email" />
-    <input id="authPassword" type="password" placeholder="Contrasena" autocomplete="current-password" />
+    <div class="auth-brand">Portal Afiliados</div>
+    <h2 class="auth-title">Acceso</h2>
+    <p class="auth-sub">Ingresa con tu correo corporativo para operar tu base asignada.</p>
+    <div class="auth-field">
+      <label class="auth-label" for="authEmail">Correo afiliado</label>
+      <input id="authEmail" type="email" placeholder="usuario@combuses.com.co" autocomplete="email" />
+    </div>
+    <div class="auth-field">
+      <label class="auth-label" for="authPassword">Contrasena</label>
+      <input id="authPassword" type="password" placeholder="Tu contrasena" autocomplete="current-password" />
+    </div>
     <div class="auth-actions">
       <button class="btn btn-primary" id="btnSignIn">Iniciar sesion</button>
       <button class="btn btn-ghost hidden" id="btnSignUp" disabled>Crear cuenta</button>
+    </div>
+    <div class="auth-help">
+      <div class="auth-help-item">Acceso solo para usuarios creados por administracion.</div>
+      <div class="auth-help-item">Si no puedes ingresar, solicita validacion de cuenta.</div>
     </div>
     <div id="authStatus" class="auth-status warn">Inicia sesion para continuar.</div>
   </div>
@@ -290,6 +420,7 @@
     <div class="row">
       <button class="btn btn-primary" id="btnGoOperativo">Operacion diaria</button>
       <button class="btn btn-ghost" id="btnGoAdmin">Panel Administrativo</button>
+      <button class="btn btn-ghost hidden" id="btnGoConverter">Convertidor</button>
     </div>
     <div class="row">
       <span class="pill" id="lblGlobal">Sin archivo cargado</span>
@@ -316,6 +447,12 @@
         <div class="muted" style="margin-top:6px">
           Si seleccionas un dia arriba y cargas un Excel, solo se reemplaza ese dia.
         </div>
+        <div class="row" style="margin-top:10px">
+          <select id="historyProgramacion" style="min-width:320px">
+            <option value="">Historial de programaciones...</option>
+          </select>
+          <button class="btn btn-ghost" id="btnLoadHistoryProgramacion">Cargar historial</button>
+        </div>
         <div style="margin-top:10px" class="row">
           <button class="btn btn-success" id="btnExport" disabled>Descargar Excel</button>
           <button class="btn btn-success" id="btnExportFormato" disabled>Descargar Formato Operativo</button>
@@ -336,6 +473,44 @@
         <div id="csvStatus" class="muted" style="margin-top:10px">Cargando conductores...</div>
       </div>
     </div>
+    <div class="card" id="adminComplianceCard" style="margin-top:12px">
+      <div class="admin-progress-head">
+        <h3 style="margin:0">Cumplimiento por base</h3>
+        <div class="row">
+          <select id="adminComplianceDate" style="min-width:220px">
+            <option value="">Selecciona fecha...</option>
+          </select>
+          <button class="btn btn-ghost" id="btnRefreshCompliance">Actualizar</button>
+          <span class="admin-progress-badge" id="adminComplianceSummary">Sin datos</span>
+        </div>
+      </div>
+      <div style="overflow:auto;max-height:42vh">
+        <table id="adminComplianceGrid">
+          <thead>
+            <tr>
+              <th>Base</th>
+              <th>Estado</th>
+              <th>Turnos</th>
+              <th>Pendientes</th>
+              <th>Sobrantes</th>
+            </tr>
+          </thead>
+          <tbody id="adminComplianceBody">
+            <tr><td colspan="5" class="muted" style="text-align:center;padding:12px">Sin datos de cumplimiento.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="converterPanel" class="card hidden">
+    <h2 style="margin:0 0 10px">Convertidor de programacion</h2>
+    <iframe
+      class="converter-frame"
+      src="https://desarrollocombuses.github.io/converter/programacionlocal.html"
+      title="Convertidor de programacion"
+      loading="lazy"
+    ></iframe>
   </div>
 
   <!-- ===================== OPERATIVO ===================== -->
@@ -375,7 +550,7 @@
               <option value="">Selecciona fecha...</option>
             </select>
             <button class="btn btn-ghost" id="clearFilter">Limpiar filtro</button>
-            <span class="muted">En BASE 3: arrastra vehiculo sobre otro para intercambiar posicion.</span>
+            <span class="muted">Intercambio de vehiculo por arrastre: disponible en BASE 3 y para administrador en todas las bases.</span>
           </div>
           <div id="gridViewport" style="overflow:visible;max-height:none">
             <table id="grid"><thead></thead><tbody></tbody></table>
@@ -429,6 +604,42 @@
   </div>
 </div>
 <div id="appToast" class="toast" aria-live="polite"></div>
+<div id="swapModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="swapModalTitle">
+  <div class="modal-card">
+    <h3 id="swapModalTitle" class="modal-title">Confirmar cambio de carro</h3>
+    <div class="modal-sub">Verifica la posicion origen y destino antes de confirmar.</div>
+    <div class="swap-grid">
+      <div class="swap-box">
+        <h4>Origen</h4>
+        <div class="swap-line" id="swapSourceLabel">-</div>
+        <div class="swap-line">Vehiculo actual:</div>
+        <div class="swap-veh" id="swapSourceVeh">-</div>
+      </div>
+      <div class="swap-box">
+        <h4>Destino</h4>
+        <div class="swap-line" id="swapTargetLabel">-</div>
+        <div class="swap-line">Vehiculo actual:</div>
+        <div class="swap-veh" id="swapTargetVeh">-</div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="btnSwapCancel">Cancelar</button>
+      <button class="btn btn-primary" id="btnSwapConfirm">Confirmar cambio</button>
+    </div>
+  </div>
+</div>
+<div id="noteModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="noteModalTitle">
+  <div class="modal-card">
+    <h3 id="noteModalTitle" class="modal-title">Nota en casilla sin conductor</h3>
+    <div class="modal-sub" id="noteModalSub">Escribe una nota para este turno.</div>
+    <textarea id="noteModalInput" class="note-input" maxlength="1200" placeholder="Ej: conductor pendiente por confirmar..."></textarea>
+    <div class="modal-actions" style="margin-top:10px">
+      <button class="btn btn-ghost" id="btnNoteClear">Limpiar nota</button>
+      <button class="btn btn-ghost" id="btnNoteCancel">Cancelar</button>
+      <button class="btn btn-primary" id="btnNoteSave">Guardar nota</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const SUPABASE_URL = "https://jtnlcckphveeqhyrxlku.supabase.co";
@@ -436,6 +647,12 @@ const SUPABASE_ANON_KEY = "sb_publishable_khOBBj9EIe2Ahmkz_KxVUw_R-SDOpk0";
 const SUPER_ADMIN_EMAIL = "administrador@combuses.com.co";
 const BASE_USER_EMAIL_RE = /^base\s*([0-9]+)@combuses\.com\.co$/i;
 const ALLOW_PUBLIC_SIGNUP = false;
+if (!window.XLSX) {
+  throw new Error("No cargo XLSX. Verifica conexion a internet o ruta del script.");
+}
+if (!window.supabase || typeof window.supabase.createClient !== "function") {
+  throw new Error("No cargo Supabase JS. Verifica conexion a internet o ruta del script.");
+}
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const authPanel = document.getElementById("authPanel");
@@ -449,6 +666,20 @@ const btnSignUp = document.getElementById("btnSignUp");
 const btnLogout = document.getElementById("btnLogout");
 const appToast = document.getElementById("appToast");
 const lblSync = document.getElementById("lblSync");
+const swapModal = document.getElementById("swapModal");
+const swapSourceLabelEl = document.getElementById("swapSourceLabel");
+const swapTargetLabelEl = document.getElementById("swapTargetLabel");
+const swapSourceVehEl = document.getElementById("swapSourceVeh");
+const swapTargetVehEl = document.getElementById("swapTargetVeh");
+const btnSwapCancel = document.getElementById("btnSwapCancel");
+const btnSwapConfirm = document.getElementById("btnSwapConfirm");
+const noteModal = document.getElementById("noteModal");
+const noteModalTitleEl = document.getElementById("noteModalTitle");
+const noteModalSub = document.getElementById("noteModalSub");
+const noteModalInput = document.getElementById("noteModalInput");
+const btnNoteClear = document.getElementById("btnNoteClear");
+const btnNoteCancel = document.getElementById("btnNoteCancel");
+const btnNoteSave = document.getElementById("btnNoteSave");
 
 let appInitialized = false;
 let currentUserId = null;
@@ -458,6 +689,8 @@ let currentUserBase = "";
 let currentProgramacionId = null;
 let currentProgramacionFileName = "programacion_online";
 let dragFeedbackTimer = null;
+let swapModalResolver = null;
+let noteModalResolver = null;
 const UNASSIGNED_LABEL = "SIN CONDUCTOR PROGRAMADO";
 let syncRowsInProgress = false;
 let syncRowsPending = false;
@@ -578,7 +811,7 @@ function isBaseOperator(){
 function extractConductorName(val){
   if (!val) return '';
   if (norm(val) === UNASSIGNED_LABEL) return '';
-  const match = String(val).match(/^(.*?)\s*\[(DISPONIBLE|INCAPACITADO|PERMISO|DESCANSO)\]\s*$/);
+  const match = String(val).match(/^(.*?)\s*\[(DISPONIBLE|INCAPACITADO|PERMISO|DESCANSO|VACACIONES|RECONOCIMIENTO DE RUTA)\]\s*$/);
   return match ? match[1].trim() : String(val).trim();
 }
 
@@ -586,6 +819,224 @@ function highlightDropTargets(active){
   document.querySelectorAll("td.drop").forEach(td => {
     td.classList.toggle("drop-active", active);
   });
+}
+
+function autoScrollDuringDrag(clientY){
+  const edge = 90;
+  const maxStep = 28;
+  const viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
+  if (!viewportH) return;
+
+  const topDelta = edge - clientY;
+  const bottomDelta = clientY - (viewportH - edge);
+
+  if (topDelta > 0) {
+    const step = Math.max(8, Math.round((topDelta / edge) * maxStep));
+    window.scrollBy(0, -step);
+  } else if (bottomDelta > 0) {
+    const step = Math.max(8, Math.round((bottomDelta / edge) * maxStep));
+    window.scrollBy(0, step);
+  }
+}
+
+function closeSwapModal(confirmed){
+  if (swapModal) swapModal.classList.add("hidden");
+  if (swapModalResolver) {
+    const resolve = swapModalResolver;
+    swapModalResolver = null;
+    resolve(!!confirmed);
+  }
+}
+
+function confirmVehicleSwapModal(payload){
+  if (!swapModal || !btnSwapCancel || !btnSwapConfirm) {
+    return Promise.resolve(confirm("Confirmar cambio de carro?"));
+  }
+  swapSourceLabelEl.textContent = payload?.sourceLabel || "-";
+  swapTargetLabelEl.textContent = payload?.targetLabel || "-";
+  swapSourceVehEl.textContent = payload?.sourceVeh || "-";
+  swapTargetVehEl.textContent = payload?.targetVeh || "-";
+  swapModal.classList.remove("hidden");
+
+  return new Promise(resolve => {
+    swapModalResolver = resolve;
+  });
+}
+
+function isInternalRowKey(key){
+  return String(key || "").startsWith("__NOTE__");
+}
+
+function getConductorNoteKey(conductorKey){
+  return `__NOTE__${String(conductorKey || "")}`;
+}
+
+function getVehiculoNoteKey(){
+  return "__NOTE__VEHICULO";
+}
+
+function getConductorNote(rowObj, conductorKey){
+  const row = rowObj || {};
+  const noteKey = getConductorNoteKey(conductorKey);
+  return String(row[noteKey] || "").trim();
+}
+
+function setConductorNote(rowObj, conductorKey, noteText){
+  const row = rowObj || {};
+  const noteKey = getConductorNoteKey(conductorKey);
+  const clean = String(noteText || "").trim();
+  if (!clean) delete row[noteKey];
+  else row[noteKey] = clean;
+}
+
+function getVehiculoNote(rowObj){
+  const row = rowObj || {};
+  const noteKey = getVehiculoNoteKey();
+  return String(row[noteKey] || "").trim();
+}
+
+function setVehiculoNote(rowObj, noteText){
+  const row = rowObj || {};
+  const noteKey = getVehiculoNoteKey();
+  const clean = String(noteText || "").trim();
+  if (!clean) delete row[noteKey];
+  else row[noteKey] = clean;
+}
+
+function isConductorSlotResolved(rowObj, conductorKey){
+  if (!conductorKey) return false;
+  const assigned = extractConductorName((rowObj || {})[conductorKey] || "");
+  if (assigned) return true;
+  const note = getConductorNote(rowObj, conductorKey);
+  return !!note;
+}
+
+function closeNoteModal(action, textValue = ""){
+  if (noteModal) noteModal.classList.add("hidden");
+  if (noteModalResolver) {
+    const resolve = noteModalResolver;
+    noteModalResolver = null;
+    resolve({ action, text: String(textValue || "") });
+  }
+}
+
+function openConductorNoteModal(payload = {}){
+  if (!noteModal || !noteModalInput || !btnNoteSave || !btnNoteCancel || !btnNoteClear) {
+    const fallback = prompt("Escribe la nota para la casilla sin conductor:", payload?.note || "");
+    if (fallback === null) return Promise.resolve({ action: "cancel", text: payload?.note || "" });
+    return Promise.resolve({ action: "save", text: String(fallback || "") });
+  }
+  if (noteModalTitleEl) noteModalTitleEl.textContent = payload?.title || "Nota en casilla sin conductor";
+  noteModalSub.textContent = payload?.label
+    ? `Turno: ${payload.label}`
+    : "Escribe una nota para este turno.";
+  noteModalInput.value = payload?.note || "";
+  noteModal.classList.remove("hidden");
+  setTimeout(() => noteModalInput.focus(), 10);
+
+  return new Promise(resolve => {
+    noteModalResolver = resolve;
+  });
+}
+
+function getSwapRowLabel(rowObj, keys = {}){
+  const row = rowObj || {};
+  const n = keys.numeroKey ? String(row[keys.numeroKey] || "").trim() : "";
+  const p = keys.puestoKey ? String(row[keys.puestoKey] || "").trim() : "";
+  const h = keys.iniciaKey ? excelTimeToHHMM(row[keys.iniciaKey]) : "";
+  const parts = [];
+  if (n) parts.push(`#${n}`);
+  if (p) parts.push(p);
+  if (h) parts.push(h);
+  return parts.join(" | ") || "Fila sin referencia";
+}
+
+function syncFichoVehicleLinksAfterSwap(opts = {}){
+  const sourceVeh = String(opts.sourceVeh ?? "").trim();
+  const targetVeh = String(opts.targetVeh ?? "").trim();
+  if (!sourceVeh || !targetVeh || sourceVeh === targetVeh) return 0;
+
+  const fechaFiltro = normalizeDateToISO(opts.selectedDate || "");
+  const baseFiltro = getBaseCanonical(opts.currentBase || "");
+  const excludedRows = Array.isArray(opts.excludedRows) ? opts.excludedRows : [];
+  const sourceNorm = normalizeVehicleId(sourceVeh);
+  const targetNorm = normalizeVehicleId(targetVeh);
+  const conductorKeys = [opts.conductorKey1, opts.conductorKey2].filter(Boolean);
+  let updated = 0;
+
+  rows.forEach(row => {
+    if (!row || excludedRows.includes(row)) return;
+    if (!isFichoRowByContent(row)) return;
+
+    if (baseFiltro) {
+      const rowBase = getRowCanonicalBase(row, opts.baseKey || null);
+      if (rowBase !== baseFiltro) return;
+    }
+    if (fechaFiltro) {
+      const rowDate = getRowDateISO(row, opts.fechaKey || null);
+      if (rowDate !== fechaFiltro) return;
+    }
+
+    const vehKey = getVehiculoKey(row);
+    if (!vehKey) return;
+    const rowVehNorm = normalizeVehicleId(row[vehKey]);
+    if (rowVehNorm === sourceNorm) {
+      row[vehKey] = targetVeh;
+      conductorKeys.forEach(k => {
+        row[k] = UNASSIGNED_LABEL;
+        setConductorNote(row, k, "");
+      });
+      updated++;
+    } else if (rowVehNorm === targetNorm) {
+      row[vehKey] = sourceVeh;
+      conductorKeys.forEach(k => {
+        row[k] = UNASSIGNED_LABEL;
+        setConductorNote(row, k, "");
+      });
+      updated++;
+    }
+  });
+
+  return updated;
+}
+
+function syncConductoresAfterVehicleSwap(sourceRow, targetRow, conductorKey1, conductorKey2){
+  const keys = [conductorKey1, conductorKey2].filter(Boolean);
+  if (!sourceRow || !targetRow || keys.length === 0) {
+    return { swapped: false, blockedByFicho: false };
+  }
+  const sourceIsFicho = isFichoRowByContent(sourceRow);
+  const targetIsFicho = isFichoRowByContent(targetRow);
+
+  if (sourceIsFicho || targetIsFicho) {
+    if (sourceIsFicho) {
+      keys.forEach(k => {
+        sourceRow[k] = UNASSIGNED_LABEL;
+        setConductorNote(sourceRow, k, "");
+      });
+    }
+    if (targetIsFicho) {
+      keys.forEach(k => {
+        targetRow[k] = UNASSIGNED_LABEL;
+        setConductorNote(targetRow, k, "");
+      });
+    }
+    return { swapped: false, blockedByFicho: true };
+  }
+
+  keys.forEach(k => {
+    const sourceVal = sourceRow[k];
+    const targetVal = targetRow[k];
+    sourceRow[k] = targetVal;
+    targetRow[k] = sourceVal;
+
+    const sourceNote = getConductorNote(sourceRow, k);
+    const targetNote = getConductorNote(targetRow, k);
+    setConductorNote(sourceRow, k, targetNote);
+    setConductorNote(targetRow, k, sourceNote);
+  });
+
+  return { swapped: true, blockedByFicho: false };
 }
 
 function validateProgramacionRows(parsedRows){
@@ -782,16 +1233,70 @@ async function initAuth(){
   });
 }
 
+if (btnSwapCancel) btnSwapCancel.onclick = () => closeSwapModal(false);
+if (btnSwapConfirm) btnSwapConfirm.onclick = () => closeSwapModal(true);
+if (swapModal) {
+  swapModal.addEventListener("click", (ev) => {
+    if (ev.target === swapModal) closeSwapModal(false);
+  });
+}
+if (btnNoteCancel) btnNoteCancel.onclick = () => closeNoteModal("cancel", noteModalInput?.value || "");
+if (btnNoteSave) btnNoteSave.onclick = () => closeNoteModal("save", noteModalInput?.value || "");
+if (btnNoteClear) btnNoteClear.onclick = () => closeNoteModal("clear", "");
+if (noteModal) {
+  noteModal.addEventListener("click", (ev) => {
+    if (ev.target === noteModal) closeNoteModal("cancel", noteModalInput?.value || "");
+  });
+}
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && swapModal && !swapModal.classList.contains("hidden")) {
+    closeSwapModal(false);
+    return;
+  }
+  if (ev.key === "Escape" && noteModal && !noteModal.classList.contains("hidden")) {
+    closeNoteModal("cancel", noteModalInput?.value || "");
+    return;
+  }
+  if (ev.key === "Enter" && noteModal && !noteModal.classList.contains("hidden") && ev.ctrlKey) {
+    closeNoteModal("save", noteModalInput?.value || "");
+  }
+});
+
 function safeFileName(name){
   return (name || "archivo.xlsx").replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function buildConsolidatedRowsFromHistory(records){
+  const list = Array.isArray(records) ? records : [];
+  const seen = new Set();
+  const consolidated = [];
+  let totalUnmapped = 0;
+
+  // records viene en orden desc (mas reciente primero). Prioriza lo mas nuevo.
+  list.forEach(rec => {
+    const prepared = normalizeProgramacionRows(Array.isArray(rec?.rows_data) ? rec.rows_data : []);
+    totalUnmapped += prepared.unmappedVehicles || 0;
+    prepared.normalized.forEach(row => {
+      const key = buildProgramacionRowKey(row);
+      if (!key) {
+        consolidated.push(row);
+        return;
+      }
+      if (seen.has(key)) return;
+      seen.add(key);
+      consolidated.push(row);
+    });
+  });
+
+  return { rows: consolidated, unmappedVehicles: totalUnmapped };
 }
 
 async function loadLatestProgramacionFromSupabase(){
   let query = supabaseClient
     .from("programaciones")
-    .select("id, file_name, rows_data, uploaded_by")
+    .select("id, file_name, rows_data, uploaded_by, created_at")
     .order("id", { ascending: false })
-    .limit(1);
+    .limit(100);
   if (!isSuperAdmin() && !isBaseOperator()) {
     query = query.eq("uploaded_by", currentUserId);
   }
@@ -804,27 +1309,65 @@ async function loadLatestProgramacionFromSupabase(){
     return;
   }
 
-  if (!data || data.length === 0) {
+  programacionesHistory = data || [];
+  renderProgramacionesHistoryOptions();
+
+  if (programacionesHistory.length === 0) {
     rows = [];
     lblGlobal.textContent = "Sin archivo cargado";
     setSyncStatus("warn", "Sin programacion");
     return;
   }
 
-  const latest = data[0];
+  const latest = programacionesHistory[0];
+  const consolidated = buildConsolidatedRowsFromHistory(programacionesHistory);
   currentProgramacionId = latest.id;
   currentProgramacionFileName = latest.file_name || currentProgramacionFileName;
-  const prepared = normalizeProgramacionRows(Array.isArray(latest.rows_data) ? latest.rows_data : []);
-  rows = prepared.normalized;
-  lblGlobal.textContent = `Programacion en linea: ${latest.file_name} | Filas: ${rows.length}`;
+  rows = consolidated.rows;
+  lblGlobal.textContent = `Programacion en linea: ${programacionesHistory.length} archivos | Filas: ${rows.length}`;
   updateExportAccess();
   fillStartBases();
-  if (prepared.unmappedVehicles > 0) {
-    showToast(`Atencion: ${prepared.unmappedVehicles} vehiculos sin base mapeada.`, "warn");
+  if (consolidated.unmappedVehicles > 0) {
+    showToast(`Atencion: ${consolidated.unmappedVehicles} vehiculos sin base mapeada.`, "warn");
     setSyncStatus("warn", "Mapeo parcial");
     return;
   }
   setSyncStatus("ok", "Programacion online");
+}
+
+function renderProgramacionesHistoryOptions(){
+  const sel = document.getElementById("historyProgramacion");
+  if (!sel) return;
+  const prev = sel.value || "";
+  sel.innerHTML = `<option value="">Historial de programaciones...</option>`;
+  programacionesHistory.forEach(rec => {
+    const op = document.createElement("option");
+    op.value = String(rec.id);
+    const dt = rec.created_at ? new Date(rec.created_at).toLocaleString("es-CO") : "sin fecha";
+    op.textContent = `${rec.file_name || "programacion"} | ${dt} | id ${rec.id}`;
+    sel.appendChild(op);
+  });
+  if (prev && programacionesHistory.some(r => String(r.id) === prev)) {
+    sel.value = prev;
+  } else if (currentProgramacionId) {
+    sel.value = String(currentProgramacionId);
+  }
+}
+
+function applyProgramacionRecord(record){
+  if (!record) return;
+  const prepared = normalizeProgramacionRows(Array.isArray(record.rows_data) ? record.rows_data : []);
+  currentProgramacionId = record.id;
+  currentProgramacionFileName = record.file_name || currentProgramacionFileName;
+  rows = prepared.normalized;
+  lblGlobal.textContent = `Programacion en linea: ${record.file_name} | Filas: ${rows.length}`;
+  updateExportAccess();
+  fillStartBases();
+  if (currentBase) refreshFilterDateOptions();
+  renderTable();
+  renderDrivers();
+  renderNovedades();
+  setSyncStatus(prepared.unmappedVehicles > 0 ? "warn" : "ok", prepared.unmappedVehicles > 0 ? "Mapeo parcial" : "Programacion online");
 }
 
 async function saveProgramacionToSupabase(file, parsedRows){
@@ -841,35 +1384,19 @@ async function saveProgramacionToSupabase(file, parsedRows){
     console.error("Error subiendo archivo a Storage:", uploadResult.error);
   }
 
-  let data = null;
-  let error = null;
-  if (currentProgramacionId) {
-    const updateResult = await supabaseClient
-      .from("programaciones")
-      .update({
-        file_name: file.name,
-        file_path: uploadResult.error ? null : storagePath,
-        rows_data: parsedRows
-      })
-      .eq("id", currentProgramacionId)
-      .select("id")
-      .single();
-    data = updateResult.data;
-    error = updateResult.error;
-  } else {
-    const insertResult = await supabaseClient
-      .from("programaciones")
-      .insert({
-        uploaded_by: currentUserId,
-        file_name: file.name,
-        file_path: uploadResult.error ? null : storagePath,
-        rows_data: parsedRows
-      })
-      .select("id")
-      .single();
-    data = insertResult.data;
-    error = insertResult.error;
-  }
+  // Historial: cada archivo cargado crea un nuevo registro de programacion.
+  const insertResult = await supabaseClient
+    .from("programaciones")
+    .insert({
+      uploaded_by: currentUserId,
+      file_name: file.name,
+      file_path: uploadResult.error ? null : storagePath,
+      rows_data: parsedRows
+    })
+    .select("id")
+    .single();
+  const data = insertResult.data;
+  const error = insertResult.error;
 
   if (error) {
     setSyncStatus("err", "Error guardando");
@@ -878,7 +1405,22 @@ async function saveProgramacionToSupabase(file, parsedRows){
 
   currentProgramacionId = data?.id || null;
   currentProgramacionFileName = file?.name || currentProgramacionFileName;
-  lblGlobal.textContent = `Programacion en linea: ${file.name} | Filas: ${parsedRows.length}`;
+  if (currentProgramacionId) {
+    programacionesHistory = [
+      {
+        id: currentProgramacionId,
+        file_name: file?.name || currentProgramacionFileName,
+        rows_data: parsedRows,
+        uploaded_by: currentUserId,
+        created_at: new Date().toISOString()
+      },
+      ...programacionesHistory.filter(r => String(r.id) !== String(currentProgramacionId))
+    ];
+    renderProgramacionesHistoryOptions();
+    const consolidated = buildConsolidatedRowsFromHistory(programacionesHistory);
+    rows = consolidated.rows;
+    lblGlobal.textContent = `Programacion en linea: ${programacionesHistory.length} archivos | Filas: ${rows.length}`;
+  }
   setSyncStatus("ok", "Archivo guardado");
   showToast("Archivo validado y sincronizado en Supabase.", "ok");
 }
@@ -1014,6 +1556,7 @@ let driversByBase = {};     // { "2": ["NOMBRE", ...] }
 let assignedByBase = {};    // { "2": Set(["..."]) }
 let basesCatalog = [];
 let isLoadingDrivers = false;
+let programacionesHistory = [];
 
 // Estructura para novedades (conductores con estado)
 let novedades = []; // Array de objetos { nombre, base, estado, fecha }
@@ -1023,6 +1566,8 @@ const NOVEDADES = {
   INCAPACITADO: { class: 'incapacitado', color: '#ef4444', label: 'Incapacitado' },
   PERMISO: { class: 'permiso', color: '#f59e0b', label: 'Permiso' },
   DESCANSO: { class: 'descanso', color: '#6b7280', label: 'Descanso' },
+  VACACIONES: { class: 'vacaciones', color: '#0ea5e9', label: 'Vacaciones' },
+  "RECONOCIMIENTO DE RUTA": { class: 'reconocimiento_ruta', color: '#7c3aed', label: 'Reconocimiento de ruta' },
   PENDIENTE: { class: 'pendiente', color: '#9ca3af', label: 'Pendiente' }
 };
 
@@ -1034,6 +1579,7 @@ const lblGlobal = document.getElementById("lblGlobal");
 const lblCurrentBase = document.getElementById("lblCurrentBase");
 const lblDriversCount = document.getElementById("lblDriversCount");
 const adminPanel = document.getElementById("adminPanel");
+const converterPanel = document.getElementById("converterPanel");
 const operativoPanel = document.getElementById("operativoPanel");
 const operativoInner = document.getElementById("operativoInner");
 const startBaseSelect = document.getElementById("startBase");
@@ -1054,6 +1600,11 @@ const stepSelectDate = document.getElementById("stepSelectDate");
 const stepAssignDrivers = document.getElementById("stepAssignDrivers");
 const stepRegisterStates = document.getElementById("stepRegisterStates");
 const workflowNote = document.getElementById("workflowNote");
+const adminComplianceCard = document.getElementById("adminComplianceCard");
+const adminComplianceDate = document.getElementById("adminComplianceDate");
+const adminComplianceBody = document.getElementById("adminComplianceBody");
+const adminComplianceSummary = document.getElementById("adminComplianceSummary");
+const btnRefreshCompliance = document.getElementById("btnRefreshCompliance");
 
 /* ===================== UTIL ===================== */
 function norm(s){ return (s||"").toString().trim().toUpperCase(); }
@@ -1112,7 +1663,7 @@ function updateWorkflowGuide(){
   } else {
     stepAssignDrivers.className = "workflow-step active";
     stepRegisterStates.className = "workflow-step";
-    workflowNote.textContent = `Completa turnos: ${status.filled}/${status.required} asignados.`;
+    workflowNote.textContent = `Completa turnos: ${status.filled}/${status.required}. En cada vacio, asigna conductor o agrega nota.`;
   }
   if (filterInput) filterInput.disabled = false;
 }
@@ -1134,15 +1685,18 @@ function adjustDynamicTableViewport(){
 function applyRoleRestrictions(){
   const navButtonsRow = document.getElementById("btnGoOperativo")?.parentElement;
   const baseSelectorRow = document.getElementById("btnEnterBase")?.parentElement;
+  const btnGoConverter = document.getElementById("btnGoConverter");
   const tabDebug = document.querySelector('.tab[data-tab="debugsupabase"]');
   const tabNovedades = document.querySelector('.tab[data-tab="novedades"]');
   const operativoTitle = document.querySelector("#operativoPanel h2");
 
   if (isBaseOperator()) {
     adminPanel.classList.add("hidden");
+    if (converterPanel) converterPanel.classList.add("hidden");
     operativoPanel.classList.remove("hidden");
     if (navButtonsRow) navButtonsRow.classList.add("hidden");
     if (baseSelectorRow) baseSelectorRow.classList.add("hidden");
+    if (btnGoConverter) btnGoConverter.classList.add("hidden");
     if (tabDebug) tabDebug.classList.add("hidden");
     if (tabNovedades) tabNovedades.classList.remove("hidden");
     if (operativoTitle) operativoTitle.textContent = `Ingreso de conductores - ${formatBaseLabel(currentUserBase)}`;
@@ -1155,9 +1709,12 @@ function applyRoleRestrictions(){
 
   if (navButtonsRow) navButtonsRow.classList.remove("hidden");
   if (baseSelectorRow) baseSelectorRow.classList.remove("hidden");
+  if (btnGoConverter) btnGoConverter.classList.toggle("hidden", !isSuperAdmin());
+  if (!isSuperAdmin() && converterPanel) converterPanel.classList.add("hidden");
   if (tabDebug) tabDebug.classList.remove("hidden");
   if (operativoTitle) operativoTitle.textContent = "Panel de operacion";
   updateExportAccess();
+  renderAdminComplianceDashboard();
 }
 
 async function renderSupabaseDebug(){
@@ -1247,7 +1804,7 @@ async function renderSupabaseDebug(){
 
 const VEHICLE_TO_BASE_MAP = {
   "703":"BASE 4","705":"BASE 4","707":"BASE 4","708":"BASE 5","709":"BASE 3",
-  "714":"BASE 3","715":"BASE 4","716":"BASE 3","717":"BASE 4","718":"BASE 3",
+  "714":"BASE 3","715":"BASE 4","710":"BASE 3","717":"BASE 4","718":"BASE 3",
   "719":"BASE 2","720":"BASE 3","721":"BASE 4","722":"BASE 3","723":"BASE 3",
   "724":"BASE 3","725":"BASE 4","726":"BASE 3","727":"BASE 3","728":"BASE 4",
   "729":"BASE 1","730":"BASE 1","731":"BASE 4","732":"BASE 1","733":"BASE 5",
@@ -1359,6 +1916,18 @@ function excelDateToReadable(iso){
 
 function excelTimeToHHMM(value){
   if(value === null || value === undefined || value === "") return "";
+  if(typeof value === "string"){
+    const raw = value.trim();
+    const m = raw.match(/^(\d{1,2}):(\d{1,2})$/);
+    if (!m) return raw;
+    let hh = parseInt(m[1], 10);
+    let mm = parseInt(m[2], 10);
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return raw;
+    if (mm < 0 || mm > 59) return raw;
+    if (hh >= 24) hh = hh % 24;
+    if (hh < 0) hh = 0;
+    return `${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
+  }
   if(typeof value !== "number") return value;
   const fraction = value % 1;
   let totalMins = Math.round(fraction * 24 * 60);
@@ -1481,8 +2050,7 @@ function getDateAssignmentStatsForBase(dateIso, baseValue = currentBase){
     [key1, key2].forEach(k => {
       if (!k) return;
       requiredSlots++;
-      const assigned = extractConductorName(r[k] || "");
-      if (assigned) filledSlots++;
+      if (isConductorSlotResolved(r, k)) filledSlots++;
     });
   });
 
@@ -1605,6 +2173,78 @@ function getAvailableDatesForCurrentBase(){
   return Array.from(dates).sort((a, b) => a.localeCompare(b));
 }
 
+function getAllAvailableDatesFromRows(){
+  const fechaKey = getFechaKey();
+  if (!fechaKey || rows.length === 0) return [];
+  const dates = new Set();
+  rows.forEach(r => {
+    const iso = normalizeDateToISO(r[fechaKey]);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ""))) dates.add(iso);
+  });
+  return Array.from(dates).sort((a, b) => b.localeCompare(a)); // reciente primero
+}
+
+function getAllBasesInProgramacion(){
+  const baseKey = getBaseKey();
+  const bases = new Set();
+  rows.forEach(r => {
+    const b = getRowCanonicalBase(r, baseKey);
+    if (b) bases.add(b);
+  });
+  return Array.from(bases).sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
+}
+
+function renderAdminComplianceDashboard(){
+  if (!adminComplianceCard || !adminComplianceBody || !adminComplianceDate || !adminComplianceSummary) return;
+  adminComplianceCard.classList.toggle("hidden", !isSuperAdmin());
+  if (!isSuperAdmin()) return;
+
+  const availableDates = getAllAvailableDatesFromRows();
+  const prev = adminComplianceDate.value || "";
+  adminComplianceDate.innerHTML = `<option value="">Selecciona fecha...</option>`;
+  availableDates.forEach(iso => {
+    const op = document.createElement("option");
+    op.value = iso;
+    op.textContent = excelDateToReadable(iso);
+    adminComplianceDate.appendChild(op);
+  });
+  if (prev && availableDates.includes(prev)) adminComplianceDate.value = prev;
+  else if (availableDates.length > 0) adminComplianceDate.value = availableDates[0];
+  else adminComplianceDate.value = "";
+
+  const dateIso = adminComplianceDate.value || "";
+  if (!dateIso) {
+    adminComplianceBody.innerHTML = `<tr><td colspan="5" class="muted" style="text-align:center;padding:12px">No hay fechas disponibles.</td></tr>`;
+    adminComplianceSummary.textContent = "Sin datos";
+    return;
+  }
+
+  const bases = getAllBasesInProgramacion();
+  if (bases.length === 0) {
+    adminComplianceBody.innerHTML = `<tr><td colspan="5" class="muted" style="text-align:center;padding:12px">No hay bases en la programacion.</td></tr>`;
+    adminComplianceSummary.textContent = `${excelDateToReadable(dateIso)} | 0 bases`;
+    return;
+  }
+
+  let completeCount = 0;
+  adminComplianceBody.innerHTML = "";
+  bases.forEach(base => {
+    const status = getDateStatusForBase(dateIso, base);
+    if (status.state === "complete") completeCount++;
+    const stats = getDateAssignmentStatsForBase(dateIso, base);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><strong>${formatBaseLabel(base)}</strong></td>
+      <td><span class="status-chip status-${status.state}">${status.label}</span></td>
+      <td>${stats.filledSlots}/${stats.requiredSlots}</td>
+      <td>${stats.pendingSlots}</td>
+      <td>${status.remaining ?? 0}</td>
+    `;
+    adminComplianceBody.appendChild(tr);
+  });
+  adminComplianceSummary.textContent = `${excelDateToReadable(dateIso)} | Cumplieron ${completeCount}/${bases.length}`;
+}
+
 function refreshFilterDateOptions(){
   const dateSelect = document.getElementById("filterDate");
   const clearBtn = document.getElementById("clearFilter");
@@ -1654,7 +2294,7 @@ function canMoveOnFromSelectedDate(actionLabel = "continuar", dateOverride = nul
 
   const status = getDateStatusForBase(selectedDate);
   if (status.state === "in_progress") {
-    showToast(`Antes de ${actionLabel}, completa todos los turnos del ${excelDateToReadable(selectedDate)}.`, "warn");
+    showToast(`Antes de ${actionLabel}, completa turnos del ${excelDateToReadable(selectedDate)}: asigna conductor o agrega nota en cada vacio.`, "warn");
     return false;
   }
   if (status.state === "needs_states") {
@@ -1680,7 +2320,7 @@ function getConductorKeysFromArray(inputRows){
 
 function buildProgramacionRowKey(rowObj){
   const row = rowObj || {};
-  const keys = Object.keys(row);
+  const keys = Object.keys(row).filter(k => !isInternalRowKey(k));
   const findByNorm = (aliases) => keys.find(k => aliases.includes(norm(k))) || null;
   const findByCompact = (aliases) => keys.find(k => aliases.includes(normCompact(k))) || null;
   const fechaKey = findByNorm(["FECHA"]);
@@ -1704,6 +2344,9 @@ function buildProgramacionRowKey(rowObj){
   if (hasAny) return keyParts.join("|");
 
   const fallback = { ...row };
+  Object.keys(fallback).forEach(k => {
+    if (isInternalRowKey(k)) delete fallback[k];
+  });
   const { key1, key2 } = getConductorKeysFromArray([row]);
   if (key1) delete fallback[key1];
   if (key2) delete fallback[key2];
@@ -2032,6 +2675,8 @@ function renderNovedades(){
           <option value="INCAPACITADO" ${n.estado === 'INCAPACITADO' ? 'selected' : ''}>Incapacitado</option>
           <option value="PERMISO" ${n.estado === 'PERMISO' ? 'selected' : ''}>Permiso</option>
           <option value="DESCANSO" ${n.estado === 'DESCANSO' ? 'selected' : ''}>Descanso</option>
+          <option value="VACACIONES" ${n.estado === 'VACACIONES' ? 'selected' : ''}>Vacaciones</option>
+          <option value="RECONOCIMIENTO DE RUTA" ${n.estado === 'RECONOCIMIENTO DE RUTA' ? 'selected' : ''}>Reconocimiento de ruta</option>
         </select>
       </td>
       <td>
@@ -2056,7 +2701,7 @@ function renderNovedades(){
           renderDrivers(); // Actualizar disponibles
         } catch (error) {
           console.error("Error actualizando novedad:", error);
-          alert("No se pudo actualizar la novedad en Supabase.");
+          alert(`No se pudo actualizar la novedad en Supabase.\n${error?.message || ""}`);
           renderNovedades();
         }
       }
@@ -2102,7 +2747,7 @@ function renderTable(){
     return;
   }
 
-  const rawHeaders = Object.keys(rows[0]).filter(h => h.toUpperCase() !== "HOJA");
+  const rawHeaders = Object.keys(rows[0]).filter(h => h.toUpperCase() !== "HOJA" && !isInternalRowKey(h));
   const preferredHeaderOrder = [
     "#",
     "INICIA",
@@ -2155,9 +2800,13 @@ function renderTable(){
     const n = norm(h);
     return n === "VEH" || n === "VEHICULO" || n === "VEHÍCULO" || n === "MOVIL" || n === "MÓVIL";
   }) || null;
-  const base3VehiculoSwapEnabled = getBaseCanonical(currentBase) === "3";
+  const vehiculoSwapEnabled = isSuperAdmin() || getBaseCanonical(currentBase) === "3";
   const puestoKey = headers.find(h => norm(h) === "PUESTO") || null;
   const numeroKey = headers.find(h => norm(h) === "#") || null;
+  const iniciaKey = headers.find(h => {
+    const t = normCompact(h).replace(/[^A-Z0-9]/g, "");
+    return t === "INICIA" || t === "INICIO" || t === "HORAINICIO1" || t === "HORAINICIO";
+  }) || null;
   const { key1: conductor1Key, key2: conductor2Key } = getConductorKeysFromRows();
   const selectedDate = document.getElementById('filterDate').value;
 
@@ -2192,6 +2841,7 @@ function renderTable(){
 
   rebuildAssigned();
 
+  let activePuestoForFichoColor = "";
   filteredRows.forEach((r) => {
     const tr = document.createElement('tr');
     const rowCanonicalBase = getRowCanonicalBase(r, baseKey);
@@ -2200,7 +2850,13 @@ function renderTable(){
     const baseRowVal = norm(rowCanonicalBase || "");
     const rowContextGlobal = `${puestoRowVal} ${numeroRowVal} ${baseRowVal}`;
     const isFichoRowGlobal = rowContextGlobal.includes("FICHO");
-    const isExposRow = rowContextGlobal.includes("EXPOSICIONES");
+
+    if (!isFichoRowGlobal && puestoRowVal) {
+      activePuestoForFichoColor = puestoRowVal;
+    }
+    const isExposRow = isFichoRowGlobal
+      ? activePuestoForFichoColor.includes("EXPOSICIONES")
+      : rowContextGlobal.includes("EXPOSICIONES");
     if (isFichoRowGlobal) {
       tr.classList.add(isExposRow ? "ficho-expos" : "ficho-sandiego");
     }
@@ -2220,23 +2876,32 @@ function renderTable(){
       if ((conductor1Key && k === conductor1Key) || (conductor2Key && k === conductor2Key)){
         td.classList.add('drop');
         const isWaiting = !v || norm(v) === UNASSIGNED_LABEL;
+        const noteText = getConductorNote(r, k);
+        const needsAction = isWaiting && !noteText && !isFichoRowGlobal;
+        const rowLabel = getSwapRowLabel(r, { numeroKey, puestoKey, iniciaKey });
         if (!isWaiting) td.classList.add('filled');
+        if (needsAction) td.classList.add("slot-unresolved");
         
         // Procesar el valor
         if (isWaiting) {
           td.innerHTML = `
             <span class="muted">${UNASSIGNED_LABEL}</span>
             <span class="estado-tag tag-pendiente">Esperando asignacion</span>
+            ${needsAction ? `<span class="slot-hint">Agrega conductor o nota</span>` : ""}
+            ${(!needsAction && noteText) ? `<span class="slot-note-ok">Nota registrada</span>` : ""}
+            ${noteText ? `<div class="cell-note">${noteText}</div>` : ""}
+            <button class="btn-note" type="button">${noteText ? "Editar nota" : "Agregar nota"}</button>
           `;
         } else if (v) {
-          const match = v.match(/^(.*?)\s*\[(DISPONIBLE|INCAPACITADO|PERMISO|DESCANSO)\]\s*$/);
+          const match = v.match(/^(.*?)\s*\[(DISPONIBLE|INCAPACITADO|PERMISO|DESCANSO|VACACIONES|RECONOCIMIENTO DE RUTA)\]\s*$/);
           if (match) {
             const nombre = match[1];
             const novedad = match[2];
+            const novedadDef = NOVEDADES[novedad] || NOVEDADES.PENDIENTE;
             td.innerHTML = `
               ${nombre}
               <span class="base-badge">${formatBaseLabel(rowCanonicalBase || '')}</span>
-              <span class="estado-tag tag-${novedad.toLowerCase()}">${novedad}</span>
+              <span class="estado-tag tag-${novedadDef.class}">${novedad}</span>
             `;
           } else {
             td.innerHTML = `
@@ -2246,10 +2911,31 @@ function renderTable(){
           }
         }
 
+        if (isWaiting) {
+          const noteBtn = td.querySelector(".btn-note");
+          if (noteBtn) {
+            noteBtn.onclick = async (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              const result = await openConductorNoteModal({
+                note: getConductorNote(r, k),
+                label: `${rowLabel} - ${k}`
+              });
+              if (!result || result.action === "cancel") return;
+              if (result.action === "clear") setConductorNote(r, k, "");
+              else if (result.action === "save") setConductorNote(r, k, result.text);
+              renderTable();
+              showToast(result.action === "clear" ? "Nota eliminada." : "Nota guardada.", "ok");
+              await syncProgramacionRowsToSupabase("Nota de casilla guardada.");
+            };
+          }
+        }
+
         // Eventos drag & drop (solo para la tabla de programacion)
         td.ondragover = ev => {
           if (isFichoRowGlobal) return;
           ev.preventDefault();
+          autoScrollDuringDrag(ev.clientY);
           td.classList.add('highlight');
         };
         td.ondragleave = () => td.classList.remove('highlight');
@@ -2274,6 +2960,7 @@ function renderTable(){
                 if (!ok) return;
               }
               r[k] = data.nombre;
+              setConductorNote(r, k, "");
               document.getElementById('btnExport').disabled = false;
               renderTable();
               renderDrivers();
@@ -2300,11 +2987,44 @@ function renderTable(){
           await syncProgramacionRowsToSupabase(`Remocion guardada en ${k}.`);
         };
 
-      } else if (base3VehiculoSwapEnabled && vehiculoKey && k === vehiculoKey) {
-        td.classList.add("veh-drop");
-        td.textContent = v || '';
-        td.title = "BASE 3: arrastra sobre otro vehiculo para intercambiar posicion";
-        td.draggable = !!r[k];
+      } else if (vehiculoKey && k === vehiculoKey) {
+        const vehLabel = v || '';
+        const vehNote = getVehiculoNote(r);
+        const rowLabel = getSwapRowLabel(r, { numeroKey, puestoKey, iniciaKey });
+        if (vehiculoSwapEnabled) td.classList.add("veh-drop");
+        td.innerHTML = `
+          <div>${vehLabel}</div>
+          ${vehNote ? `<div class="cell-note">${vehNote}</div>` : ""}
+          <button class="btn-note" type="button">${vehNote ? "Editar comentario" : "Agregar comentario"}</button>
+        `;
+        td.title = vehiculoSwapEnabled
+          ? (isSuperAdmin() ? "Admin: arrastra sobre otro vehiculo para intercambiar posicion" : "BASE 3: arrastra sobre otro vehiculo para intercambiar posicion")
+          : "Vehiculo";
+        td.draggable = !!r[k] && vehiculoSwapEnabled;
+
+        const vehNoteBtn = td.querySelector(".btn-note");
+        if (vehNoteBtn) {
+          vehNoteBtn.onclick = async (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const result = await openConductorNoteModal({
+              title: "Comentario del carro",
+              note: getVehiculoNote(r),
+              label: `${rowLabel} - VEH ${vehLabel || "-"}`,
+            });
+            if (!result || result.action === "cancel") return;
+            if (result.action === "clear") setVehiculoNote(r, "");
+            else if (result.action === "save") setVehiculoNote(r, result.text);
+            renderTable();
+            showToast(result.action === "clear" ? "Comentario de carro eliminado." : "Comentario de carro guardado.", "ok");
+            await syncProgramacionRowsToSupabase("Comentario de carro guardado.");
+          };
+        }
+
+        if (!vehiculoSwapEnabled) {
+          tr.appendChild(td);
+          return;
+        }
 
         td.ondragstart = ev => {
           const sourceValue = r[k];
@@ -2312,17 +3032,22 @@ function renderTable(){
             ev.preventDefault();
             return;
           }
+          const sourceLabel = getSwapRowLabel(r, { numeroKey, puestoKey, iniciaKey });
           td.classList.add("highlight");
           ev.dataTransfer.setData("text/plain", JSON.stringify({
             tipo: "vehiculo_posicion",
             sourceRowKey: buildProgramacionRowKey(r),
-            sourceVehiculoKey: k
+            sourceVehiculoKey: k,
+            sourceVehiculo: String(sourceValue),
+            sourceLabel
           }));
           ev.dataTransfer.effectAllowed = "move";
+          showToast(`Cambio de carro: origen ${sourceLabel} (VEH ${sourceValue}).`, "warn");
         };
         td.ondragend = () => td.classList.remove("highlight");
         td.ondragover = ev => {
           ev.preventDefault();
+          autoScrollDuringDrag(ev.clientY);
           td.classList.add("highlight");
         };
         td.ondragleave = () => td.classList.remove("highlight");
@@ -2343,12 +3068,39 @@ function renderTable(){
             const sourceVehiculoKey = data.sourceVehiculoKey || vehiculoKey;
             const sourceValue = sourceRow[sourceVehiculoKey];
             const targetValue = r[k];
+            const sourceLabel = data.sourceLabel || getSwapRowLabel(sourceRow, { numeroKey, puestoKey, iniciaKey });
+            const targetLabel = getSwapRowLabel(r, { numeroKey, puestoKey, iniciaKey });
+            const ok = await confirmVehicleSwapModal({
+              sourceLabel,
+              targetLabel,
+              sourceVeh: sourceValue || "-",
+              targetVeh: targetValue || "-"
+            });
+            if (!ok) {
+              showToast("Cambio de carro cancelado.", "warn");
+              return;
+            }
             sourceRow[sourceVehiculoKey] = targetValue;
             r[k] = sourceValue;
+            const conductorSync = syncConductoresAfterVehicleSwap(sourceRow, r, conductor1Key, conductor2Key);
+            const fichoUpdated = syncFichoVehicleLinksAfterSwap({
+              sourceVeh: sourceValue,
+              targetVeh: targetValue,
+              selectedDate,
+              currentBase,
+              baseKey,
+              fechaKey,
+              conductorKey1: conductor1Key,
+              conductorKey2: conductor2Key,
+              excludedRows: [sourceRow, r]
+            });
 
             document.getElementById('btnExport').disabled = false;
             renderTable();
-            showToast(`Intercambio de posicion: ${sourceValue || "-"} <-> ${targetValue || "-"}`, "ok");
+            const conductorMsg = conductorSync.blockedByFicho
+              ? " | FICHO sin conductor"
+              : (conductorSync.swapped ? " | Conductores movidos con el carro" : "");
+            showToast(`Cambio confirmado: ${sourceValue || "-"} <-> ${targetValue || "-"}${conductorMsg}${fichoUpdated ? ` | FICHO actualizados: ${fichoUpdated}` : ""}`, "ok");
             await syncProgramacionRowsToSupabase("Cambio de posicion de vehiculos guardado.");
           } catch (e) {
             console.error("Error intercambio vehiculos", e);
@@ -2375,6 +3127,7 @@ function renderTable(){
   });
 
   renderDrivers();
+  renderAdminComplianceDashboard();
 }
 
 /* ===================== PESTANAS ===================== */
@@ -2403,7 +3156,10 @@ document.querySelectorAll('.tab').forEach(tab => {
 // Hacer que la tabla de novedades acepte drops
 const novedadesGrid = document.getElementById('novedadesGrid');
 if (novedadesGrid) {
-  novedadesGrid.ondragover = ev => ev.preventDefault();
+  novedadesGrid.ondragover = ev => {
+    ev.preventDefault();
+    autoScrollDuringDrag(ev.clientY);
+  };
   novedadesGrid.ondrop = async ev => {
     ev.preventDefault();
     
@@ -2442,7 +3198,11 @@ if (novedadesGrid) {
       }
     } catch (e) {
       console.error('Error creando novedad', e);
-      alert('No se pudo guardar la novedad en Supabase.');
+      const detail = String(e?.message || "");
+      const duplicateHint = detail.toLowerCase().includes("duplicate key")
+        ? "\nPosible causa: indice unico de novedades sin fecha."
+        : "";
+      alert(`No se pudo guardar la novedad en Supabase.\n${detail}${duplicateHint}`);
       setSyncStatus("err", "Error novedades");
     }
   };
@@ -2510,7 +3270,6 @@ async function readFile(file){
   if (currentBase) refreshFilterDateOptions();
   try {
     await saveProgramacionToSupabase(file, nextRows);
-    lblGlobal.textContent = `Programacion en linea: ${file.name} | Filas: ${rows.length}`;
   } catch (error) {
     console.error("No se pudo persistir en Supabase:", error);
     lblGlobal.textContent = `Archivo cargado localmente: ${file.name} | Filas: ${rows.length}`;
@@ -2548,7 +3307,9 @@ function enterBase(base){
   renderTable();
   renderDrivers();
   renderNovedades();
-  if (currentBase === "3") {
+  if (isSuperAdmin()) {
+    showToast("Admin: puedes intercambiar posiciones de vehiculos por arrastre en cualquier base.", "ok");
+  } else if (currentBase === "3") {
     showToast("BASE 3: puedes intercambiar posiciones de vehiculos arrastrando un vehiculo sobre otro.", "ok");
   }
 }
@@ -2569,13 +3330,24 @@ function exitBase(){
 /* ===================== EVENTOS ===================== */
 document.getElementById("btnGoAdmin").onclick = () => {
   adminPanel.classList.remove("hidden");
+  if (converterPanel) converterPanel.classList.add("hidden");
   operativoPanel.classList.add("hidden");
 };
 
 document.getElementById("btnGoOperativo").onclick = () => {
   adminPanel.classList.add("hidden");
+  if (converterPanel) converterPanel.classList.add("hidden");
   operativoPanel.classList.remove("hidden");
 };
+const btnGoConverter = document.getElementById("btnGoConverter");
+if (btnGoConverter) {
+  btnGoConverter.onclick = () => {
+    if (!isSuperAdmin()) return;
+    adminPanel.classList.add("hidden");
+    operativoPanel.classList.add("hidden");
+    if (converterPanel) converterPanel.classList.remove("hidden");
+  };
+}
 
 document.getElementById('fileProg').addEventListener('change', async e => {
   const f = e.target.files[0];
@@ -2598,6 +3370,9 @@ document.getElementById('btnExport').onclick = () => {
   const exportRows = rows.map(({Hoja,...r}) => {
     const out = { ...r };
     Object.keys(out).forEach(k => {
+      if (isInternalRowKey(k)) delete out[k];
+    });
+    Object.keys(out).forEach(k => {
       if (isTimeColumnKey(k)) {
         out[k] = excelTimeToHHMM(out[k]);
       }
@@ -2610,7 +3385,7 @@ document.getElementById('btnExport').onclick = () => {
   XLSX.writeFile(wb, "programacion_conductores.xlsx");
 };
 
-document.getElementById('btnExportFormato').onclick = () => {
+document.getElementById('btnExportFormato').onclick = async () => {
   if (!canExportXlsx()) {
     showToast("Solo el super administrador puede descargar el Excel.", "warn");
     return;
@@ -2643,20 +3418,113 @@ document.getElementById('btnExportFormato').onclick = () => {
     showToast("No hay filas para la fecha seleccionada.", "warn");
     return;
   }
+  if (!window.ExcelJS) {
+    showToast("No se pudo cargar ExcelJS para exportar con estilos.", "err");
+    return;
+  }
 
-  // Mantener el orden de secuencia del dia y construir bloques por cambio de puesto.
   const ordered = exportData.slice();
-  const aoa = [];
-  const merges = [];
   const dateForTitle = selectedDate || (fechaKey ? normalizeDateToISO(ordered[0][fechaKey]) : "");
   const titleDate = formatDateLongEs(dateForTitle || "");
+  const fichoVehColorMap = new Map(); // vehicleId(normalized) -> "green" | "blue"
+
+  // Escaneo previo: identificar vehiculos de filas FICHO y su color por bloque.
+  let scanActivePuesto = "";
+  ordered.forEach(r => {
+    const puestoRaw = String(puestoKey ? (r[puestoKey] || "") : "").trim();
+    const numeroRaw = String(numeroKey ? (r[numeroKey] || "") : "").trim();
+    const isFichoMarker = norm(numeroRaw).includes("FICHO");
+    if (!isFichoMarker && puestoRaw) scanActivePuesto = puestoRaw;
+    if (!isFichoMarker) return;
+    const vehRaw = String(vehiculoKey ? (r[vehiculoKey] || "") : "").trim();
+    if (!vehRaw) return;
+    const vehNorm = normalizeVehicleId(vehRaw);
+    if (!vehNorm) return;
+    const isBlue = norm(scanActivePuesto).includes("EXPOSICIONES");
+    const existing = fichoVehColorMap.get(vehNorm);
+    // Prioridad al azul si el vehiculo aparece en ambos bloques.
+    if (!existing || isBlue) {
+      fichoVehColorMap.set(vehNorm, isBlue ? "blue" : "green");
+    }
+  });
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(`DIA_${selectedDate}`);
+  ws.columns = [
+    { width: 8 },  // A #
+    { width: 10 }, // B INICIA
+    { width: 8 },  // C VEH
+    { width: 36 }, // D CONDUCTOR 1
+    { width: 10 }, // E INICIA 2
+    { width: 36 }, // F CONDUCTOR 2
+    { width: 10 }, // G HORA FIN
+    { width: 3 },  // H separador
+    { width: 18 }, // I BASE NOVEDAD
+    { width: 34 }, // J CONDUCTOR NOVEDAD
+    { width: 16 }  // K ESTADO NOVEDAD
+  ];
+
+  const styleTitle = {
+    fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } },
+    font: { bold: true, color: { argb: "FF0F172A" }, size: 26 },
+    alignment: { horizontal: "center", vertical: "middle" }
+  };
+  const styleHeader = {
+    fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } },
+    font: { bold: true, color: { argb: "FF000000" } },
+    alignment: { horizontal: "center", vertical: "middle" }
+  };
+  const styleFichoGreen = {
+    fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FF16A34A" } },
+    font: { bold: true, color: { argb: "FFFFFFFF" } }
+  };
+  const styleFichoBlue = {
+    fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FF2563EB" } },
+    font: { bold: true, color: { argb: "FFFFFFFF" } }
+  };
+  const styleBorderThin = {
+    top: { style: "thin", color: { argb: "FF000000" } },
+    left: { style: "thin", color: { argb: "FF000000" } },
+    bottom: { style: "thin", color: { argb: "FF000000" } },
+    right: { style: "thin", color: { argb: "FF000000" } }
+  };
+
+  const applyRowStyle = (rowNumber, styleObj, fromCol = 1, toCol = 7) => {
+    for (let c = fromCol; c <= toCol; c++) {
+      const cell = ws.getRow(rowNumber).getCell(c);
+      cell.style = { ...(cell.style || {}), ...styleObj };
+    }
+  };
+  const applyBorderRow = (rowNumber, fromCol = 1, toCol = 7) => {
+    for (let c = fromCol; c <= toCol; c++) {
+      ws.getRow(rowNumber).getCell(c).border = styleBorderThin;
+    }
+  };
+
+  const formatConductorForExport = (rowObj, conductorKey) => {
+    if (!conductorKey) return "";
+    const raw = String(rowObj?.[conductorKey] || "");
+    const note = getConductorNote(rowObj, conductorKey);
+    const assigned = extractConductorName(raw);
+    const isUnassigned = !raw || norm(raw) === UNASSIGNED_LABEL || !assigned;
+    if (!note) return raw;
+    if (!isUnassigned) return raw;
+    return `${UNASSIGNED_LABEL}\nNOTA: ${note}`;
+  };
+
+  let currentRow = 1;
   let activePuesto = "";
   const openSection = (puestoLabel) => {
-    if (aoa.length > 0) aoa.push([]);
-    const titleRow = aoa.length;
-    aoa.push([`${String(puestoLabel || "SIN PUESTO").toUpperCase()} ${titleDate}`]);
-    merges.push({ s: { r: titleRow, c: 0 }, e: { r: titleRow, c: 6 } });
-    aoa.push(["#", "INICIA", "VEH", "CONDUCTOR 1", "INICIA", "CONDUCTOR 2", "HORA FIN"]);
+    if (currentRow > 1) currentRow++;
+    ws.mergeCells(currentRow, 1, currentRow, 7);
+    ws.getRow(currentRow).getCell(1).value = `${String(puestoLabel || "SIN PUESTO").toUpperCase()} ${titleDate}`;
+    applyRowStyle(currentRow, styleTitle);
+    applyBorderRow(currentRow, 1, 7);
+    currentRow++;
+    ws.getRow(currentRow).values = ["#", "INICIA", "VEH", "CONDUCTOR 1", "INICIA", "CONDUCTOR 2", "HORA FIN"];
+    applyRowStyle(currentRow, styleHeader);
+    applyBorderRow(currentRow, 1, 7);
+    currentRow++;
   };
 
   ordered.forEach((r, idx) => {
@@ -2673,52 +3541,101 @@ document.getElementById('btnExportFormato').onclick = () => {
       openSection(activePuesto);
     }
 
-    aoa.push([
+    const vehNote = getVehiculoNote(r);
+    let vehValue = vehiculoKey ? (r[vehiculoKey] || "") : "";
+    if (vehNote) vehValue = `${vehValue}\nCOMENTARIO: ${vehNote}`;
+
+    ws.getRow(currentRow).values = [
       numeroKey ? r[numeroKey] : (idx + 1),
       horaInicio1Key ? excelTimeToHHMM(r[horaInicio1Key]) : "",
-      vehiculoKey ? (r[vehiculoKey] || "") : "",
-      conductor1Key ? (r[conductor1Key] || "") : "",
+      vehValue,
+      formatConductorForExport(r, conductor1Key),
       horaInicio2Key ? excelTimeToHHMM(r[horaInicio2Key]) : "",
-      conductor2Key ? (r[conductor2Key] || "") : "",
+      formatConductorForExport(r, conductor2Key),
       horaFinKey ? excelTimeToHHMM(r[horaFinKey]) : ""
-    ]);
+    ];
+    ws.getRow(currentRow).getCell(1).alignment = { horizontal: "center", vertical: "middle" };
+    ws.getRow(currentRow).getCell(2).alignment = { horizontal: "center", vertical: "middle" };
+    ws.getRow(currentRow).getCell(3).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    ws.getRow(currentRow).getCell(4).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    ws.getRow(currentRow).getCell(5).alignment = { horizontal: "center", vertical: "middle" };
+    ws.getRow(currentRow).getCell(6).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    ws.getRow(currentRow).getCell(7).alignment = { horizontal: "center", vertical: "middle" };
+    applyBorderRow(currentRow, 1, 7);
+
+    if (isFichoMarker) {
+      const isFichoExpos = norm(activePuesto).includes("EXPOSICIONES");
+      applyRowStyle(currentRow, isFichoExpos ? styleFichoBlue : styleFichoGreen);
+    } else {
+      const isNutibara = norm(puestoRaw).includes("NUTIBARA");
+      const vehNorm = normalizeVehicleId(String(vehiculoKey ? (r[vehiculoKey] || "") : "").trim());
+      const vehColor = isNutibara ? fichoVehColorMap.get(vehNorm) : null;
+      if (vehColor) {
+        const vehCell = ws.getRow(currentRow).getCell(3); // Columna VEH
+        vehCell.style = {
+          ...(vehCell.style || {}),
+          fill: {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: vehColor === "blue" ? "FF2563EB" : "FF16A34A" }
+          },
+          font: { ...(vehCell.style?.font || {}), bold: true, color: { argb: "FFFFFFFF" } }
+        };
+      }
+    }
+    currentRow++;
   });
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
   let novedadesDelDia = (novedades || []).filter(n => normalizeDateToISO(n.fecha) === selectedDate);
   if (novedadesDelDia.length === 0 && currentBase) {
-    // Fallback para registros antiguos sin fecha alineada al dia operativo.
     novedadesDelDia = (novedades || []).filter(n => sameBase(n.base, currentBase));
   }
-  const novedadesTable = [["NOVEDADES DEL DIA"], ["BASE", "CONDUCTOR", "ESTADO"]];
+  ws.mergeCells(1, 9, 1, 11);
+  ws.getRow(1).getCell(9).value = "NOVEDADES DEL DIA";
+  ws.getRow(1).getCell(9).style = styleTitle;
+  ws.getRow(2).getCell(9).value = "BASE";
+  ws.getRow(2).getCell(10).value = "CONDUCTOR";
+  ws.getRow(2).getCell(11).value = "ESTADO";
+  for (let c = 9; c <= 11; c++) {
+    ws.getRow(2).getCell(c).style = styleHeader;
+    ws.getRow(2).getCell(c).alignment = { horizontal: "center", vertical: "middle" };
+    ws.getRow(2).getCell(c).border = styleBorderThin;
+  }
+
+  let novRow = 3;
   if (novedadesDelDia.length === 0) {
-    novedadesTable.push(["-", "Sin novedades", "-"]);
+    ws.getRow(novRow).getCell(9).value = "-";
+    ws.getRow(novRow).getCell(10).value = "Sin novedades";
+    ws.getRow(novRow).getCell(11).value = "-";
+    ws.getRow(novRow).getCell(9).alignment = { horizontal: "center", vertical: "middle" };
+    ws.getRow(novRow).getCell(10).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    ws.getRow(novRow).getCell(11).alignment = { horizontal: "center", vertical: "middle" };
+    applyBorderRow(novRow, 9, 11);
   } else {
     novedadesDelDia.forEach(n => {
-      novedadesTable.push([n.base || "-", n.nombre || "-", n.estado || "-"]);
+      ws.getRow(novRow).getCell(9).value = n.base || "-";
+      ws.getRow(novRow).getCell(10).value = n.nombre || "-";
+      ws.getRow(novRow).getCell(11).value = n.estado || "-";
+      ws.getRow(novRow).getCell(9).alignment = { horizontal: "center", vertical: "middle" };
+      ws.getRow(novRow).getCell(10).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      ws.getRow(novRow).getCell(11).alignment = { horizontal: "center", vertical: "middle" };
+      applyBorderRow(novRow, 9, 11);
+      novRow++;
     });
   }
-  XLSX.utils.sheet_add_aoa(ws, novedadesTable, { origin: { r: 0, c: 8 } });
 
-  merges.push({ s: { r: 0, c: 8 }, e: { r: 0, c: 10 } });
-  ws["!merges"] = merges;
-  ws["!cols"] = [
-    { wch: 8 },  // #
-    { wch: 10 }, // INICIA
-    { wch: 8 },  // VEH
-    { wch: 36 }, // CONDUCTOR 1
-    { wch: 10 }, // INICIA
-    { wch: 36 }, // CONDUCTOR 2
-    { wch: 10 }, // HORA FIN
-    { wch: 3 },  // separador
-    { wch: 18 }, // BASE NOVEDAD
-    { wch: 34 }, // CONDUCTOR NOVEDAD
-    { wch: 16 }  // ESTADO NOVEDAD
-  ];
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, `DIA_${selectedDate}`);
-  XLSX.writeFile(wb, `formato_operativo_${selectedDate}.xlsx`);
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `formato_operativo_${selectedDate}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 };
 
 document.getElementById('clearProg').onclick = () => {
@@ -2798,6 +3715,24 @@ document.getElementById("btnRemoveBase").onclick = () => {
 };
 
 document.getElementById("btnReloadDrivers").onclick = loadDriversFromCSV;
+if (btnRefreshCompliance) btnRefreshCompliance.onclick = renderAdminComplianceDashboard;
+if (adminComplianceDate) adminComplianceDate.onchange = renderAdminComplianceDashboard;
+document.getElementById("btnLoadHistoryProgramacion").onclick = () => {
+  const sel = document.getElementById("historyProgramacion");
+  const id = sel?.value || "";
+  if (!id) {
+    showToast("Selecciona una programacion del historial.", "warn");
+    return;
+  }
+  const rec = programacionesHistory.find(r => String(r.id) === String(id));
+  if (!rec) {
+    showToast("No se encontro la programacion seleccionada.", "warn");
+    return;
+  }
+  applyProgramacionRecord(rec);
+  renderAdminComplianceDashboard();
+  showToast(`Historial cargado: ${rec.file_name || rec.id}`, "ok");
+};
 document.getElementById("btnEnterBase").onclick = () => enterBase(startBaseSelect.value);
 document.getElementById("btnExitBase").onclick = exitBase;
 if (btnRefreshDebug) btnRefreshDebug.onclick = renderSupabaseDebug;
@@ -2848,6 +3783,7 @@ async function initializeApp(){
     }
   }
   adminPanel.classList.add("hidden");
+  if (converterPanel) converterPanel.classList.add("hidden");
   operativoPanel.classList.remove("hidden");
   applyRoleRestrictions();
   updateWorkflowGuide();
@@ -2873,6 +3809,8 @@ initAuth();
 </script>
 </body>
 </html>
+
+
 
 
 
